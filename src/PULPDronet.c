@@ -46,8 +46,8 @@ static short int *		L3_weights[NWEIGTHS];
 static int				L3_sizes[NWEIGTHS]; 
 static unsigned int		L2_bias_sizes[NWEIGTHS]; 
 static int 				Norm_Factor[NWEIGTHS];
-static short int		SPIM_tx[2];
-static short int		SPIM_rx[2];
+static short int		SPIM_tx[SPIM_BUFFER/2]; // divided by 2 because in bytes
+static short int		SPIM_rx[SPIM_BUFFER/2]; // divided by 2 because in bytes
 
 
 unsigned int PMU_set_voltage(unsigned int Voltage, unsigned int CheckFrequencies);
@@ -189,6 +189,8 @@ static void RunPULPDronet() {
 	rt_perf_reset(&perf_cl);
 	rt_perf_start(&perf_cl);
 #endif
+	// set SPI header - take care, SPIM_tx is 16bit, not 8!
+	SPIM_tx[0] = PULP_NAV_MSG_TYPE + (PULP_NAV_MSG_DRONET << 8);
 
 
 /* --------------------------------- LAYER 1 -------------------------------- */
@@ -907,7 +909,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 	meta_free(memId_W, L3_sizes[10]);
-	SPIM_tx[0] = L2_output[16][0];
+	SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0] = L2_output[16][0];
 	meta_free(memId_O, outputSizesB[16]+2);
 
 
@@ -957,7 +959,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 	meta_free(memId_W, L3_sizes[11]);
-	SPIM_tx[1] = L2_output[17][0];
+	SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1] = L2_output[17][0];
 	meta_free(memId_O, outputSizesB[17]+2);
 	meta_free(0, outputSizesB[14]);
 	meta_free(0, outputSizesB[9]);
@@ -1373,9 +1375,9 @@ int main() {
 
 #ifdef VERBOSE
 	#ifdef DEBUG
-		printf("Result[steer][coll]:\t%f\t%f\n", fixed2float(SPIM_tx[0], NORM_ACT), fixed2float(SPIM_tx[1], NORM_ACT));
+		printf("Result[steer][coll]:\t%f\t%f\n", fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0], NORM_ACT), fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1], NORM_ACT));
 	#else
-		printf("Result[steer][coll]:\t%d\t%d\n", SPIM_tx[0], SPIM_tx[1]);
+		printf("Result[steer][coll]:\t%d\t%d\n", SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0], SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1]);
 	#endif
 #endif
 
