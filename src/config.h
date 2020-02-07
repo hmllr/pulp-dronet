@@ -79,6 +79,23 @@
 // Dense_1			16		128		7		7		1		1		1		7		7		1		2		12544
 // Dense_2			17		128		7		7		1		1		1		7		7		1		2		12544
 
+// Protocoll between CF and PULP Shield
+// 2 bytes header + (2b steering angle + 2b coll.prob (without sigmoid) from DroNet + 4 bytes dummy | 8 bytes from FrontNet)
+// 0 	:	message type, currently only PULP_NAV_MSG_TYPE
+// 1	:	message subtype, at the moment either 
+//			DRONET_MODE		FRONTNET_MODE
+// 2-3	:	steering angle	?
+// 4-5	:	coll. prob.		?
+// 6-9	:	unused			?
+#define PULP_MSG_HEADER_LENGTH 	2 // in bytes, has to be an even number as the buffer is in int16 
+#define PULP_MSG_LENGTH			10 // in bytes, has to be an even number as the buffer is in int16
+#define PULP_NAV_MSG_TYPE		0xFE // Navigation message
+#define PULP_NAV_MSG_DRONET		0x01
+#define PULP_NAV_MSG_FRONTNET 	0x02
+#define DRONET_MODE				0x01
+#define FRONTNET_MODE			0x02
+#define NN_CHANGE_TEST			1
+
 /***************************** PRIVATE PARAMETERS *****************************/
 #define STACK_SIZE		1200		// Stack size per Core
 #define MOUNT			1			// Cluster mount command
@@ -87,7 +104,7 @@
 #define FLASH_BUFF_SIZE	128 		// Safe to keep this <= 256 Bytes
 #define NLAYERS			18			// Overall number of layers (ReLu, Add, Conv, Dense)
 #define NWEIGTHS		12			// Number of Conv Weights
-#define SPIM_BUFFER		4			// SPI master buffer size [Bytes]
+#define SPIM_BUFFER		PULP_MSG_LENGTH// SPI master buffer size [Bytes]
 #define NORM_BIAS_DENSE	NORM_ACT	// Normalization Factor for the Biases of dense layers
 #define NUM_L2_BUFF		2			// Number of L2 buffers, should be even as there are are always 2 stacks growing towards each other
 #define	CROPPING_X		1			// Cropping area X (Horizontal/Width): 0=Left, 1=Central, 2=Right
