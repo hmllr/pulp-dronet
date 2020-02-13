@@ -141,14 +141,17 @@ static void end_of_frame() {
 		unsigned char * line = ptr_crop + init_offset + CAM_FULLRES_W * i;
 		for(int j=0; j<CAM_CROP_W; j+=DS_RATIO) {
 			origin[outid] = line[j];
+			#ifdef PRINT_IMAGES
+				printf("%d,",origin[outid]);
+			#endif PRINT_IMAGES
 			outid++;
 		}
 	}
 #endif
 
-
-
-
+#ifdef SHOW_IMAGES
+  WriteImageToFile("../../../NN_input_image.ppm",CAM_CROP_W/DS_RATIO,CAM_CROP_H/DS_RATIO,L2_image);
+#endif //SHOW_IMAGES
 	//TODO fix for dronet with subsampling and when to extend to 16bit
 	int dronet = 0;
 	// we need chars for H/nH and short int for dronet 
@@ -1011,6 +1014,14 @@ __rt_cluster_push_fc_event(event_capture);
 
 int main() {
 
+#ifdef SHOW_IMAGES
+  printf("Connecting to bridge...\n");
+  //Open Debug bridge connection for FILE IO
+  rt_bridge_connect(1, NULL);
+  printf("Connection done.\n");
+
+#endif //SHOW_IMAGES
+
 #ifdef VERBOSE
 	printf("FC Launched\n");
 #endif
@@ -1354,7 +1365,6 @@ int main() {
 #ifndef DATASET_TEST
 	while(1) {
 #endif
-
 #ifdef PROFILE_FC
 		rt_perf_t perf_fc;
 		rt_perf_init(&perf_fc);
