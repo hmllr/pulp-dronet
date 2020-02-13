@@ -22,6 +22,8 @@
 
 # Uncomment 'DEBUG' to enable debugging support (e.g., float prints)
 # DEBUG				= true
+# Uncomment 'SHOW_IMAGES' to enable file transfer over openOCD to show the input images for the NN
+SHOW_IMAGES			= true 
 pulpChip			= GAP
 PULP_APP			= PULPDroNet
 WEIGHTS_DIR			= $(CURDIR)/../weights
@@ -68,6 +70,11 @@ PULP_CFLAGS 		+= -I$(TILER_DIR)/include -I$(CURDIR) -I$(FINDNET_INC_DIR)
 PULP_LDFLAGS		+= -flto -Wl,--gc-sections
 USER_CONFIG			= $(CURDIR)/config.ini
 
+ifdef SHOW_IMAGES
+	# this is needed for the Filetransfer over openOCD
+	PULP_CFLAGS     += -DSHOW_IMAGES
+	PLPBRIDGE_FLAGS += -fileIO 
+endif
 
 all::
 

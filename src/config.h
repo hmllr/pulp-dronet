@@ -28,6 +28,7 @@
 // #define DATASET_TEST				// Enable if you test the Dataset (single iteration)
 // #define VERBOSE					// Enables additional information
 // #define VERBOSE_META_ALLOC		
+// #define PRINT_IMAGES
 // #define CHECKSUM					// Enables correctness check per layer
 // #define PROFILE_CL				// Profiling execution from the Cluster
 // #define PROFILE_FC				// Profiling execution from the Fabric Ctrl
