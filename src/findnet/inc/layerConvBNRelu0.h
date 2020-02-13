@@ -1,0 +1,112 @@
+// flag_DW                        0
+// out_mult                       18
+// out_shift                      23
+// FLAG_BATCHNORM                 1
+// FLAG_RELU                      1
+// weight_T                       0
+// to_compute_acc_in              0
+// to_compute_acc_out             0
+// test_location                  L3
+// tile_dim_h                     2
+// tile_dim_w                     3
+// optional                       conv
+// conv_order                     PULP-NN
+// type                           char
+// func_name                      layerConvBNRelu0
+// l1_x_offset                    0
+// l1_y_offset                    4390
+// l1_W_offset                    35114
+// l1_k_offset                    36726
+// l1_lambda_offset               36794
+// k_size_byte                    64
+// lambda_size_byte               128
+// k_tile_size_byte               64
+// lambda_tile_size_byte          128
+// tile_dim_nof                   1
+// tile_dim_nif                   1
+// border                         1
+// nof                            32
+// nif                            1
+// h                              60
+// w                              108
+// fs1                            5
+// fs2                            5
+// conv_overlap1                  3
+// conv_overlap2                  3
+// has_bias                       0
+// padding                        2
+// stride                         2
+// x_h                            60
+// x_w                            108
+// x_data_size_byte               1
+// x_tile_size_nif                1
+// x_tile_size_h                  51
+// x_tile_size_w                  43
+// x_tile_size_byte               2193
+// x_stride_w_byte                108
+// x_stride_c_byte                1
+// x_length_nif_px                1
+// x_length_nif_byte              1
+// x_length_h_px                  51
+// x_length_w_byte                43
+// x_tile_size_nif_last           1
+// x_tile_size_h_last             14
+// x_tile_size_w_last             30
+// x_length_nif_px_last           1
+// x_length_nif_byte_last         1
+// x_length_h_px_last             14
+// x_length_w_byte_last           30
+// x_tile_size_byte_first         2193
+// x_length_nif_px_first          1
+// x_length_nif_byte_first        1
+// x_length_h_px_first            51
+// x_length_w_byte_first          43
+// W_nof                          32
+// b_tile_size_byte               32
+// W_nif                          1
+// W_data_size_byte               1
+// W_tile_size_nof                32
+// W_tile_size_nif                1
+// W_tile_size_byte               800
+// W_stride_nof_byte              25
+// W_stride_hw_byte               1
+// W_length_nif_byte              1
+// W_tile_size_nof_last           32
+// W_tile_size_nif_last           1
+// W_length_nif_byte_last         1
+// W_tile_size_byte_first         800
+// W_length_nif_byte_first        1
+// b_size_byte                    32
+// l2_off_k                       800
+// l2_off_lambda                  864
+// y_h                            30
+// y_w                            54
+// y_data_size_byte               1
+// y_tile_size_nof                32
+// y_tile_size_h                  24
+// y_tile_size_w                  20
+// y_tile_size_byte               15360
+// y_stride_w_byte                1728
+// y_stride_c_byte                32
+// y_length_nof_px                32
+// y_length_nof_byte              32
+// y_length_h_px                  24
+// y_length_w_byte                20
+// y_tile_size_nof_last           32
+// y_tile_size_h_last             6
+// y_tile_size_w_last             14
+// y_length_nof_px_last           32
+// y_length_w_byte_last           14
+// y_length_nof_byte_last         32
+
+
+#include "pulp.h"
+#include "dory.h"
+#include "stats.h"
+
+void  layerConvBNRelu0(
+  unsigned int l2_x,
+  unsigned int l2_y,
+  unsigned int l2_W,
+  unsigned int l1_buffer
+);

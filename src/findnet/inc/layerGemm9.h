@@ -1,0 +1,104 @@
+// flag_DW                        0
+// out_mult                       0
+// out_shift                      0
+// FLAG_BATCHNORM                 0
+// FLAG_RELU                      0
+// weight_T                       0
+// to_compute_acc_in              0
+// to_compute_acc_out             0
+// test_location                  L3
+// tile_dim_h                     1
+// tile_dim_w                     1
+// optional                       conv
+// conv_order                     PULP-NN
+// type                           char
+// func_name                      layerGemm9
+// l1_x_offset                    0
+// l1_y_offset                    132
+// l1_W_offset                    137
+// tile_dim_nof                   1
+// tile_dim_nif                   1
+// border                         0
+// nof                            1
+// nif                            128
+// h                              1
+// w                              1
+// fs1                            1
+// fs2                            1
+// conv_overlap1                  0
+// conv_overlap2                  0
+// has_bias                       0
+// padding                        0
+// stride                         1
+// x_h                            1
+// x_w                            1
+// x_data_size_byte               1
+// x_tile_size_nif                128
+// x_tile_size_h                  1
+// x_tile_size_w                  1
+// x_tile_size_byte               128
+// x_stride_w_byte                128
+// x_stride_c_byte                128
+// x_length_nif_px                128
+// x_length_nif_byte              128
+// x_length_h_px                  1
+// x_length_w_byte                1
+// x_tile_size_nif_last           128
+// x_tile_size_h_last             1
+// x_tile_size_w_last             1
+// x_length_nif_px_last           128
+// x_length_nif_byte_last         128
+// x_length_h_px_last             1
+// x_length_w_byte_last           1
+// x_tile_size_byte_first         128
+// x_length_nif_px_first          128
+// x_length_nif_byte_first        128
+// x_length_h_px_first            1
+// x_length_w_byte_first          1
+// W_nof                          1
+// b_tile_size_byte               1
+// W_nif                          128
+// W_data_size_byte               1
+// W_tile_size_nof                1
+// W_tile_size_nif                128
+// W_tile_size_byte               128
+// W_stride_nof_byte              128
+// W_stride_hw_byte               128
+// W_length_nif_byte              128
+// W_tile_size_nof_last           1
+// W_tile_size_nif_last           128
+// W_length_nif_byte_last         128
+// W_tile_size_byte_first         128
+// W_length_nif_byte_first        128
+// b_size_byte                    1
+// y_h                            1
+// y_w                            1
+// y_data_size_byte               1
+// y_tile_size_nof                1
+// y_tile_size_h                  1
+// y_tile_size_w                  1
+// y_tile_size_byte               1
+// y_stride_w_byte                1
+// y_stride_c_byte                1
+// y_length_nof_px                1
+// y_length_nof_byte              1
+// y_length_h_px                  1
+// y_length_w_byte                1
+// y_tile_size_nof_last           1
+// y_tile_size_h_last             1
+// y_tile_size_w_last             1
+// y_length_nof_px_last           1
+// y_length_w_byte_last           1
+// y_length_nof_byte_last         1
+
+
+#include "pulp.h"
+#include "dory.h"
+#include "stats.h"
+
+void  layerGemm9(
+  unsigned int l2_x,
+  unsigned int l2_y,
+  unsigned int l2_W,
+  unsigned int l1_buffer
+);
