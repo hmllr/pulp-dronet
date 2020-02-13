@@ -36,8 +36,9 @@
 #define SPI_COMM					// Enables SPI communication
 #define CAM_FULLRES_W	324			// HiMax full width 324
 #define CAM_FULLRES_H	244			// HiMax full height 244
-#define CAM_CROP_W		200			// Cropped camera width 
-#define CAM_CROP_H		200			// Cropped camera height 
+#define CAM_CROP_W		324//108//200			// Cropped camera width 
+#define CAM_CROP_H		180//244//60//200			// Cropped camera height 
+#define DS_RATIO		3			// downsampling ratio after cropping
 #define	NORM_INPUT		8			// Input image Norm Factor [Default Q8.8]
 #define NORM_ACT		11			// Activations Norm Factor [Default Q5.11]
 /***************************** DEBUGGING SUPPORT ******************************/
@@ -92,6 +93,7 @@
 #define PULP_NAV_MSG_TYPE		0xFE // Navigation message
 #define PULP_NAV_MSG_DRONET		0x01
 #define PULP_NAV_MSG_FRONTNET 	0x02
+#define PULP_NAV_MSG_HEAD	 	0x03
 #define DRONET_MODE				0x01
 #define FRONTNET_MODE			0x02
 #define NN_CHANGE_TEST			1
