@@ -422,6 +422,35 @@ $ plp_mkflash --verbose --raw WeightsPULPDroNet.raw \
 The option `--raw` specifies the output binary file that will be generated.
 Instead with the option `--comp=` you can select the raw files that you want to load in the image for the Hyper Flash memory.
 
+For both, dronet and H/nH NN weights do (you only need the inputs if you want to test a single image):
+~~~~shell
+$ source ./pulp-sdk/configs/gap.sh
+$ source ./pulp-sdk/configs/platform-board.sh
+$ cd ./pulp-dronet/weights
+$ plp_mkflash --verbose --raw WeightsPULPDroNet.raw \
+--comp=./binary/weights_conv2d_1.hex --comp=./binary/weights_conv2d_2.hex \
+--comp=./binary/weights_conv2d_3.hex --comp=./binary/weights_conv2d_4.hex \
+--comp=./binary/weights_conv2d_5.hex --comp=./binary/weights_conv2d_6.hex \
+--comp=./binary/weights_conv2d_7.hex --comp=./binary/weights_conv2d_8.hex \
+--comp=./binary/weights_conv2d_9.hex --comp=./binary/weights_conv2d_10.hex \
+--comp=./binary/weights_dense_1.hex --comp=./binary/weights_dense_2.hex \
+--comp=./binary/bias_conv2d_1.hex --comp=./binary/bias_conv2d_2.hex \
+--comp=./binary/bias_conv2d_3.hex --comp=./binary/bias_conv2d_4.hex \
+--comp=./binary/bias_conv2d_5.hex --comp=./binary/bias_conv2d_6.hex \
+--comp=./binary/bias_conv2d_7.hex --comp=./binary/bias_conv2d_8.hex \
+--comp=./binary/bias_conv2d_9.hex --comp=./binary/bias_conv2d_10.hex \
+--comp=./binary/bias_dense_1.hex --comp=./binary/bias_dense_2.hex \
+--comp=../src/findnet/ConvBNRelu0_weights.hex \
+--comp=../src/findnet/ConvBNRelu2_weights.hex \
+--comp=../src/findnet/ConvBNRelu3_weights.hex \
+--comp=../src/findnet/ConvBNRelu4_weights.hex \
+--comp=../src/findnet/ConvBNRelu5_weights.hex \
+--comp=../src/findnet/ConvBNRelu6_weights.hex \
+--comp=../src/findnet/ConvBNRelu7_weights.hex \
+--comp=../src/findnet/Gemm9_weights.hex \
+--comp=../src/findnet/inputs.hex
+
+~~~~
 
 ### 5.1 Flash the Hyper Memory
 The `.raw` image, containing both weights and biases, is located under `weights/WeightsPULPDroNet.raw`.
