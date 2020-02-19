@@ -29,7 +29,7 @@ PULP_APP			= PULPDroNet
 WEIGHTS_DIR			= $(CURDIR)/../weights
 TILER_DIR			= $(CURDIR)/autotiler
 FINDNET_INC_DIR		= $(CURDIR)/findnet/inc
-PULP_APP_SRCS		= PULPDronet.c PULPDronetKernels.c PULPDronetKernelsInit.c $(TILER_DIR)/src/CNN_BasicKernels.c
+PULP_APP_SRCS		= PULPDronet.c #PULPDronetKernels.c PULPDronetKernelsInit.c $(TILER_DIR)/src/CNN_BasicKernels.c
 
 # PULP_APP_SRCS += findnet/src/test_template.c # main, not used if DroNet is real main
 PULP_APP_SRCS += findnet/src/network.c findnet/src/dory.c findnet/src/hyperram_aligned.c
@@ -49,7 +49,7 @@ PULP_APP_SRCS += findnet/src/layerGemm9.c
 PULP_APP_SRCS += findnet/src/layerConvBNRelu6.c
 PULP_APP_SRCS += findnet/src/layerConvBNRelu2.c
 PULP_APP_SRCS += findnet/src/layerConvBNRelu7.c
-PULP_APP_SRCS += ImgIO.c
+
 ifndef CORE
 CORE=1
 else
@@ -66,7 +66,7 @@ else
 	PULP_CFLAGS		+= -Os 
 endif
 PULP_CFLAGS			+= -DNUM_CORES=$(CORE) -w -mno-memcpy -fno-tree-loop-distribute-patterns -fdata-sections -ffunction-sections -Wall -Wno-maybe-uninitialized -Wno-unused-but-set-variable
-PULP_CFLAGS 		+= -I$(TILER_DIR)/include -I$(CURDIR) -I$(FINDNET_INC_DIR)
+PULP_CFLAGS 		+= -I$(TILER_DIR)/include -I$(FINDNET_INC_DIR) #-I$(CURDIR)
 PULP_LDFLAGS		+= -flto -Wl,--gc-sections
 USER_CONFIG			= $(CURDIR)/config.ini
 
@@ -74,6 +74,7 @@ ifdef SHOW_IMAGES
 	# this is needed for the Filetransfer over openOCD
 	PULP_CFLAGS     += -DSHOW_IMAGES
 	PLPBRIDGE_FLAGS += -fileIO 
+	PULP_APP_SRCS 	+= ImgIO.c
 endif
 
 all::

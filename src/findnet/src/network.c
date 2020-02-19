@@ -19,7 +19,7 @@
 #include "layerMaxPool1.h"
 
 #define FLASH_BUFF_SIZE 128
-//#define VERBOSE 1
+#define VERBOSE 1
 static const char * L3_weights_files[] = {
   "ConvBNRelu0_weights.hex", "ConvBNRelu2_weights.hex", "ConvBNRelu3_weights.hex", "ConvBNRelu4_weights.hex", "ConvBNRelu5_weights.hex", "ConvBNRelu6_weights.hex", "ConvBNRelu7_weights.hex", "Gemm9_weights.hex"
 };
@@ -104,7 +104,9 @@ int network_setup()
   file = rt_fs_open(fs, "inputs.hex", 0, NULL);
   if (file == NULL)
   {
+#ifdef VERBOSE
     printf("file open failed\n");
+#endif
     return -1;
   }
     activations_input = L3_weights+rdDone;
@@ -132,7 +134,6 @@ void cluster_main(void *arg) {
     (unsigned int) real_arg[1],
     (short int *)  real_arg[2]
     );
-  printf("Finished cluster_main\n");
 }
 
 void pulp_parallel(void *arg)
@@ -156,7 +157,6 @@ char network_run_FabricController(short int *   L2_image)
   arg[0] = (unsigned int) L3_weights_size;
   arg[1] = (unsigned int) hyperram;
   arg[2] = L2_image;
-  printf("L2_image %d\n", L2_image);
   PMU_set_voltage(1000, 0);
   rt_time_wait_us(10000);
   rt_freq_set(RT_FREQ_DOMAIN_FC, 100000000);
@@ -165,7 +165,6 @@ char network_run_FabricController(short int *   L2_image)
   rt_time_wait_us(10000);
   rt_cluster_mount(1, 0, 0, NULL);
   rt_cluster_call(NULL, 0, pulp_parallel, arg, NULL,1024+1024, 1024+1024, rt_nb_pe(), NULL);
-  printf("Finished fork\n");
   rt_cluster_mount(0, 0, 0, NULL);
   return *(L2_output);
 }
@@ -179,8 +178,8 @@ void network_run(
 
   if (rt_core_id()==0)
   {
-    L2_buffer_allocation = L2_base[0];//rt_alloc(RT_ALLOC_L2_CL_DATA, 400000);
-    L2_buffer_allocation_end = L2_buffer_allocation + 400000;
+    L2_buffer_allocation = L2_base[0];//rt_alloc(RT_ALLOC_L2_CL_DATA, 300000);
+    L2_buffer_allocation_end = L2_buffer_allocation + 300000;
     l1_buffer = rt_alloc(RT_ALLOC_CL_DATA,44000 );
 #ifdef VERBOSE
     printf("L2 Buffer alloc initial\t@ 0x%08x:\t%s\n", (unsigned int)L2_buffer_allocation, L2_buffer_allocation?"Ok":"Failed");
@@ -262,7 +261,6 @@ void network_run(
   }
 #endif  
   rt_team_barrier();
-  printf("%d %d %d %d %d %d %d %d\n", L2_image[0], L2_image[1], L2_image[2], L2_image[3], L2_image[4], L2_image[5], L2_image[6], L2_image[7]);
   layerConvBNRelu0(
       L2_image,
       L2_output,
@@ -992,7 +990,6 @@ void network_run(
 
   if(rt_core_id()==0)
   {
-    printf("class: %d\n", *(L2_output));
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 9);  
     check = 193;
@@ -1017,13 +1014,20 @@ int cid = rt_core_id();
 int perf_cyc =  rt_perf_get(&perf2, RT_PERF_CYCLES) ; 
 int MACs = 186400768;
 float perf_MAC =  (float)MACs/perf_cyc;
-if (cid == 0){
-printf("[%d] : num_cycles: %d\n",cid,perf_cyc); 
-printf("[%d] : MACs: %d\n",cid,MACs ); 
-printf("[%d] : MAC/cycle: %f\n",cid,perf_MAC ); 
-printf("[%d] : n. of Cores: %d\n",cid,NUM_CORES); 
-}
+#ifdef VERBOSE
+  if (cid == 0){
+  printf("[%d] : num_cycles: %d\n",cid,perf_cyc); 
+  printf("[%d] : MACs: %d\n",cid,MACs ); 
+  printf("[%d] : MAC/cycle: %f\n",cid,perf_MAC ); 
+  printf("[%d] : n. of Cores: %d\n",cid,NUM_CORES); 
+  }
+#endif
 
+if(rt_core_id()==0)
+  {
+    //rt_free(RT_ALLOC_L2_CL_DATA, L2_buffer_allocation, 300000);
+    rt_free(RT_ALLOC_CL_DATA, l1_buffer, 44000 );
+  }
 }
 
 
