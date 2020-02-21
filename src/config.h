@@ -27,6 +27,7 @@
 /****************************** USER PARAMETERS *******************************/
 // #define DATASET_TEST				// Enable if you test the Dataset (single iteration)
 // #define VERBOSE					// Enables additional information
+// #define VERBOSE_META_ALLOC		
 // #define CHECKSUM					// Enables correctness check per layer
 // #define PROFILE_CL				// Profiling execution from the Cluster
 // #define PROFILE_FC				// Profiling execution from the Fabric Ctrl
@@ -88,7 +89,7 @@
 #define NWEIGTHS		12			// Number of Conv Weights
 #define SPIM_BUFFER		4			// SPI master buffer size [Bytes]
 #define NORM_BIAS_DENSE	NORM_ACT	// Normalization Factor for the Biases of dense layers
-#define NUM_L2_BUFF		2			// Number of L2 buffers 
+#define NUM_L2_BUFF		2			// Number of L2 buffers, should be even as there are are always 2 stacks growing towards each other
 #define	CROPPING_X		1			// Cropping area X (Horizontal/Width): 0=Left, 1=Central, 2=Right
 #define	CROPPING_Y		2			// Cropping area Y (Vertical/Height): 0=Top, 1=Central, 2=Bottom
 /******************************************************************************/
@@ -173,7 +174,7 @@ const int			LAYERS_MAPPING_LUT[] = {
 /******************************************************************************/
 
 /* ----------------------------- L2 Buffer Sizes ---------------------------- */
-const int			L2_buffers_size[NUM_L2_BUFF] = {320000, 61632};
+const int			L2_buffers_size[NUM_L2_BUFF/2] = {341632};
 
 /* --------------------------- Input Channel Sizes -------------------------- */
 const int			inCh[] = {
@@ -446,5 +447,36 @@ const unsigned int	Layer_GT[NLAYERS] = {
 };
 #endif // CHECKSUM
 
+#define MEM_ID_O1 				0
+#define MEM_ID_O2 				1
+#define MEM_ID_O3 				0
+#define MEM_ID_O4 				1
+#define MEM_ID_O5 				1
+//#define MEM_ID_O6 				
+#define MEM_ID_O7 				0
+#define MEM_ID_O8 				0
+#define MEM_ID_O9 				1
+//#define MEM_ID_O11
+#define MEM_ID_O10      		0
+#define MEM_ID_O12 				0
+#define MEM_ID_O13 				1
+#define MEM_ID_O14 				1
+#define MEM_ID_O15 				0
+//#define MEM_ID_O16 				
+#define MEM_ID_O17 				1
+#define MEM_ID_O18 				1
+
+#define MEM_ID_W1 				0
+#define MEM_ID_W2 				1
+#define MEM_ID_W3 				1
+#define MEM_ID_W4 				1
+#define MEM_ID_W5 				0
+#define MEM_ID_W6				0
+#define MEM_ID_W7 				0
+#define MEM_ID_W8 				0
+#define MEM_ID_W9 				0
+#define MEM_ID_W10 				1
+#define MEM_ID_W11 				1
+#define MEM_ID_W12 				1
 
 #endif // PULP_DRONET_CONFIG
