@@ -28,7 +28,7 @@
 #include "Utils.h"
 
 
-static char *			L2_base[NUM_L2_BUFF];
+static char *			L2_base[NUM_L2_BUFF/2];
 static char *			L2_next_free[NUM_L2_BUFF];
 #ifdef PROFILE_CL
 static int				perf_exe_cum_cl[NLAYERS];
@@ -48,6 +48,7 @@ static unsigned int		L2_bias_sizes[NWEIGTHS];
 static int 				Norm_Factor[NWEIGTHS];
 static short int		SPIM_tx[2];
 static short int		SPIM_rx[2];
+static short int *		L3_temp_O5;
 
 
 unsigned int PMU_set_voltage(unsigned int Voltage, unsigned int CheckFrequencies);
@@ -68,29 +69,55 @@ static void handle_async_error(void *arg, rt_event_t *event, int error, void *ob
 
 static void enqueue_capture();
 
-
 static char * meta_alloc(int memId, int sizeBytes) {
+#ifdef VERBOSE_META_ALLOC
+	printf("Alloc %d Byte on Mem %d\n",sizeBytes, memId );
+#endif //VERBOSE_META_ALLOC	
+	if(memId%2 ==0){
 
-	char * return_ptr = L2_next_free[memId];
-	if(L2_next_free[memId] + sizeBytes > L2_base[memId] + L2_buffers_size[memId]) {
-		printf("META ALLOC ERROR on MEM %d. Request: %d Byte Available: %d Byte\n", 
-			memId, 
-			sizeBytes, 
-			L2_buffers_size[memId]-(int)((unsigned int)L2_next_free[memId]-(unsigned int)L2_base[memId]));
-		exit(-1);
+		char * return_ptr = L2_next_free[memId];
+		if(L2_next_free[memId] + sizeBytes > L2_base[memId] + L2_buffers_size[memId]) {
+			printf("META ALLOC ERROR on MEM %d. Request: %d Byte Available: %d Byte\n", 
+				memId, 
+				sizeBytes, 
+				L2_buffers_size[memId]-(int)((unsigned int)L2_next_free[memId]-(unsigned int)L2_base[memId]));
+			exit(-1);
+		}
+		L2_next_free[memId] += sizeBytes;
+		return return_ptr;
+	}else{
+		if(L2_next_free[memId-1] + sizeBytes > L2_next_free[memId]) {
+			printf("META ALLOC ERROR on MEM %d. Request: %d Byte Available: %d Byte\n", 
+				memId, 
+				sizeBytes, 
+				(int)((unsigned int)L2_next_free[memId])-((unsigned int)L2_next_free[memId-1]));
+			exit(-1);
+		}
+		L2_next_free[memId] -= sizeBytes;
+		char * return_ptr = L2_next_free[memId];
+		return return_ptr;
 	}
-	L2_next_free[memId] += sizeBytes;
-	return return_ptr;
 }
 
-
 static void meta_free(int memId, int sizeBytes) {
+#ifdef VERBOSE_META_ALLOC
+	printf("Free %d Byte on Mem %d\n",sizeBytes, memId );
+#endif //VERBOSE_META_ALLOC
+	if(memId%2 == 0){
 
-	if(L2_next_free[memId] - sizeBytes < L2_base[memId]) {
-		printf("META FREE ERROR on MEM %d. Request: %d Byte\n", memId, sizeBytes);
-		exit(-1);
+		if(L2_next_free[memId] - sizeBytes < L2_base[memId]) {
+			printf("META FREE ERROR on MEM %d. Request: %d Byte\n", memId, sizeBytes);
+			exit(-1);
+		}
+		L2_next_free[memId] -= sizeBytes;
+	} else{
+
+		if(L2_next_free[memId] + sizeBytes > L2_base[memId-1] + L2_buffers_size[memId-1]) {
+			printf("META FREE ERROR on MEM %d. Request: %d Byte\n", memId, sizeBytes);
+			exit(-1);
+		}
+		L2_next_free[memId] += sizeBytes;
 	}
-	L2_next_free[memId] -= sizeBytes;
 }
 
 
@@ -98,6 +125,13 @@ static void L3toL2(short int *bufferL3, short int *L2_weights, int sizeL3B) {
 
 	rt_hyperram_req_t reqL3;
 	rt_hyperram_cluster_read(hyperram, L2_weights, bufferL3, sizeL3B, &reqL3); 
+	rt_hyperram_cluster_wait(&reqL3);
+}
+
+static void L2toL3(short int *L3_address, short int *L2_address, int size) {
+
+	rt_hyperram_req_t reqL3;
+	rt_hyperram_cluster_write(hyperram, L2_address, L3_address, size, &reqL3); 
 	rt_hyperram_cluster_wait(&reqL3);
 }
 
@@ -193,8 +227,6 @@ static void RunPULPDronet() {
 
 /* --------------------------------- LAYER 1 -------------------------------- */
 	L2_input = L2_image;
-	memId_O = 0;
-	memId_W = 0;
 
 #if defined(DUMP_I) && (DUMP_I==0 || DUMP_I==18)
 	dumpFMs(0, L2_input, 0, DUMP_T);
@@ -204,9 +236,9 @@ static void RunPULPDronet() {
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[0] = (short int *) meta_alloc(memId_O, outputSizesB[0]);
+	L2_output[0] = (short int *) meta_alloc(MEM_ID_O1, outputSizesB[0]); 
 
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[0]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W1, L3_sizes[0]);
 
 	L3toL2(L3_weights[0], L2_weights, L3_sizes[0]);
 
@@ -237,144 +269,15 @@ static void RunPULPDronet() {
 	check_layer(L2_output[0], 0);
 #endif
 
-	meta_free(memId_W, L3_sizes[0]);
+	meta_free(MEM_ID_W1, L3_sizes[0]);
 
 
 /* -------------------- TRIGGER A NEW IMG TRANSFER ON FC -------------------- */
 
 __rt_cluster_push_fc_event(event_capture);
 
-/* --------------------------------- LAYER 2 -------------------------------- */
-	L2_input = L2_output[0];
-	memId_O = 0;
-
-#if defined(DUMP_I) && (DUMP_I==1 || DUMP_I==18)
-	dumpFMs(1, L2_input, 0, DUMP_T);
-#endif
-
-#ifdef PROFILE_CL
-	perf_mem_cum_cl[1] = 0;
-	perf_start = rt_perf_read(RT_PERF_CYCLES);
-#endif
-
-	L2_output[1] = (short int *) meta_alloc(memId_O, outputSizesB[1]);
-
-	ReLU_SW_1(L2_input, L2_output[1], 0);
-
-#ifdef PROFILE_CL
-	perf_exe_cum_cl[1] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
-#endif
-
-#if defined(DUMP_O) && (DUMP_O==1 || DUMP_O==18)
-	dumpFMs(1, L2_output[1], 1, DUMP_T);
-#endif
-
-#ifdef CHECKSUM
-	check_layer(L2_output[1], 1);
-#endif
-
-
-	L2_input = L2_output[1];
-	memId_O = 1;
-	memId_W = 1;
-
-#if defined(DUMP_I) && (DUMP_I==2 || DUMP_I==18)
-	dumpFMs(2, L2_input, 0, DUMP_T);
-#endif
-
-#ifdef PROFILE_CL
-	perf_start = rt_perf_read(RT_PERF_CYCLES);
-#endif
-
-	L2_output[2] = (short int *) meta_alloc(memId_O, outputSizesB[2]);
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[1]);
-
-	L3toL2(L3_weights[1], L2_weights, L3_sizes[1]);
-
-#ifdef PROFILE_CL
-	perf_mem_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
-	perf_start = rt_perf_read(RT_PERF_CYCLES);
-#endif
-
-	MedParConv_3x3_S2_ReLU_2(L2_input, L2_weights, L2_output[2], Norm_Factor[1], L2_bias[1], 0);
-
-#ifdef PROFILE_CL
-	perf_exe_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
-#endif
-
-#if defined(DUMP_W) && (DUMP_W==2 || DUMP_W==18)
-	dumpW(2, L2_weights, DUMP_T);
-#endif
-
-#if defined(DUMP_B) && (DUMP_B==2 || DUMP_B==18)
-	dumpBias(2, L2_bias[1], DUMP_T);
-#endif
-
-#if defined(DUMP_O) && (DUMP_O==2 || DUMP_O==18)
-	dumpFMs(2, L2_output[2], 1, DUMP_T);
-#endif
-
-#ifdef CHECKSUM
-	check_layer(L2_output[2], 2);
-#endif
-
-	meta_free(memId_W, L3_sizes[1]);
-	meta_free(0, outputSizesB[1]);
-
-
-/* --------------------------------- LAYER 3 -------------------------------- */
-	L2_input = L2_output[2];
-	memId_O = 0;
-	memId_W = 1;
-
-#if defined(DUMP_I) && (DUMP_I==3 || DUMP_I==18)
-	dumpFMs(3, L2_input, 0, DUMP_T);
-#endif
-
-#ifdef PROFILE_CL
-	perf_start = rt_perf_read(RT_PERF_CYCLES);
-#endif
-
-	L2_output[3] = (short int *) meta_alloc(memId_O, outputSizesB[3]);
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[2]);
-
-	L3toL2(L3_weights[2], L2_weights, L3_sizes[2]);
-
-#ifdef PROFILE_CL
-	perf_mem_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
-	perf_start = rt_perf_read(RT_PERF_CYCLES);
-#endif
-
-	MedParConv_3x3_S1_3(L2_input, L2_weights, L2_output[3], Norm_Factor[2], L2_bias[2], 0);
-
-#ifdef PROFILE_CL
-	perf_exe_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
-#endif
-
-#if defined(DUMP_W) && (DUMP_W==3 || DUMP_W==18)
-	dumpW(3, L2_weights, DUMP_T);
-#endif
-
-#if defined(DUMP_B) && (DUMP_B==3 || DUMP_B==18)
-	dumpBias(3, L2_bias[2], DUMP_T);
-#endif
-
-#if defined(DUMP_O) && (DUMP_O==3 || DUMP_O==18)
-	dumpFMs(3, L2_output[3], 1, DUMP_T);
-#endif
-
-#ifdef CHECKSUM
-	check_layer(L2_output[3], 3);
-#endif
-
-	meta_free(memId_W, L3_sizes[2]);
-	meta_free(1, outputSizesB[2]);
-	
-
 /* --------------------------------- LAYER 4 -------------------------------- */
 	L2_input = L2_output[0];
-	memId_O = 1;
-	memId_W = 1;
 
 #if defined(DUMP_I) && (DUMP_I==4 || DUMP_I==18)
 	dumpFMs(4, L2_input, 0, DUMP_T);
@@ -384,8 +287,8 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[4] = (short int *) meta_alloc(memId_O, outputSizesB[4]);
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[3]);
+	L2_output[4] = (short int *) meta_alloc(MEM_ID_O5, outputSizesB[4]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W4, L3_sizes[3]);
 
 	L3toL2(L3_weights[3], L2_weights, L3_sizes[3]);
 
@@ -416,12 +319,143 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[4], 4);
 #endif
 
-	meta_free(memId_W, L3_sizes[3]);
+	meta_free(MEM_ID_W4, L3_sizes[3]);
+	// move O5 to L3 to save L2
+	L2toL3(L3_temp_O5, L2_output[4], outputSizesB[4]);
+	meta_free(MEM_ID_O5, outputSizesB[4]);
+
+
+/* --------------------------------- LAYER 2 -------------------------------- */
+
+	L2_input = L2_output[0];
+
+#if defined(DUMP_I) && (DUMP_I==1 || DUMP_I==18)
+	dumpFMs(1, L2_input, 0, DUMP_T);
+#endif
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[1] = 0;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[1] = (short int *) meta_alloc(MEM_ID_O2, outputSizesB[1]);
+
+	ReLU_SW_1(L2_input, L2_output[1], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[1] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==1 || DUMP_O==18)
+	dumpFMs(1, L2_output[1], 1, DUMP_T);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[1], 1);
+#endif
+	meta_free(MEM_ID_O1, outputSizesB[0]);
+
+
+	L2_input = L2_output[1];
+
+#if defined(DUMP_I) && (DUMP_I==2 || DUMP_I==18)
+	dumpFMs(2, L2_input, 0, DUMP_T);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[2] = (short int *) meta_alloc(MEM_ID_O3, outputSizesB[2]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W2, L3_sizes[1]);
+
+	L3toL2(L3_weights[1], L2_weights, L3_sizes[1]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	MedParConv_3x3_S2_ReLU_2(L2_input, L2_weights, L2_output[2], Norm_Factor[1], L2_bias[1], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==2 || DUMP_W==18)
+	dumpW(2, L2_weights, DUMP_T);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==2 || DUMP_B==18)
+	dumpBias(2, L2_bias[1], DUMP_T);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==2 || DUMP_O==18)
+	dumpFMs(2, L2_output[2], 1, DUMP_T);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[2], 2);
+#endif
+
+	meta_free(MEM_ID_W2, L3_sizes[1]);
+	meta_free(MEM_ID_O2, outputSizesB[1]);
+
+
+/* --------------------------------- LAYER 3 -------------------------------- */
+	L2_input = L2_output[2];
+
+#if defined(DUMP_I) && (DUMP_I==3 || DUMP_I==18)
+	dumpFMs(3, L2_input, 0, DUMP_T);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[3] = (short int *) meta_alloc(MEM_ID_O4, outputSizesB[3]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W3, L3_sizes[2]);
+
+	L3toL2(L3_weights[2], L2_weights, L3_sizes[2]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	MedParConv_3x3_S1_3(L2_input, L2_weights, L2_output[3], Norm_Factor[2], L2_bias[2], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==3 || DUMP_W==18)
+	dumpW(3, L2_weights, DUMP_T);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==3 || DUMP_B==18)
+	dumpBias(3, L2_bias[2], DUMP_T);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==3 || DUMP_O==18)
+	dumpFMs(3, L2_output[3], 1, DUMP_T);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[3], 3);
+#endif
+
+	meta_free(MEM_ID_W3, L3_sizes[2]);
+	meta_free(MEM_ID_O3, outputSizesB[2]);
 	
+	// reload O5 from L3
+	L2_output[4] = (short int *) meta_alloc(MEM_ID_O5, outputSizesB[4]);
+	L3toL2(L3_temp_O5, L2_output[4], outputSizesB[4]);
+	check_layer(L2_output[4], 4);
 
 /* -------------------------------- ADD RES 1 -------------------------------- */
-	L2_input = L2_output[3];
-	L2_output[5] = L2_output[4];
+	L2_input = L2_output[4];
+	L2_output[5] = L2_output[3];
 
 #if defined(DUMP_I) && (DUMP_I==5 || DUMP_I==18)
 	dumpFMs(5, L2_input, 0, DUMP_T);
@@ -446,13 +480,11 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[5], 5);
 #endif
 
-	meta_free(0, outputSizesB[3]);
-	meta_free(0, outputSizesB[0]);
+	meta_free(MEM_ID_O4, outputSizesB[4]);
 	
 
 /* --------------------------------- LAYER 5 -------------------------------- */
 	L2_input = L2_output[5];
-	memId_O = 0;
 
 #if defined(DUMP_I) && (DUMP_I==6 || DUMP_I==18)
 	dumpFMs(6, L2_input, 0, DUMP_T);
@@ -463,7 +495,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[6] = (short int *) meta_alloc(memId_O, outputSizesB[6]);
+	L2_output[6] = (short int *) meta_alloc(MEM_ID_O7, outputSizesB[6]);
 
 	ReLU_SW_2(L2_input, L2_output[6], 0);
 
@@ -481,8 +513,6 @@ __rt_cluster_push_fc_event(event_capture);
 	
 
 	L2_input = L2_output[6];
-	memId_O = 0;
-	memId_W = 0;
 
 #if defined(DUMP_I) && (DUMP_I==7 || DUMP_I==18)
 	dumpFMs(7, L2_input, 0, DUMP_T);
@@ -492,8 +522,8 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[7] = (short int *) meta_alloc(memId_O, outputSizesB[7]);
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[4]);
+	L2_output[7] = (short int *) meta_alloc(MEM_ID_O8, outputSizesB[7]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W5, L3_sizes[4]);
 
 	L3toL2(L3_weights[4], L2_weights, L3_sizes[4]);
 
@@ -524,13 +554,11 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[7], 7);
 #endif
 
-	meta_free(memId_W, L3_sizes[4]);
+	meta_free(MEM_ID_W5, L3_sizes[4]);
 	
 
 /* --------------------------------- LAYER 6 -------------------------------- */
 	L2_input = L2_output[7];
-	memId_O = 1;
-	memId_W = 0;
 
 #if defined(DUMP_I) && (DUMP_I==8 || DUMP_I==18)
 	dumpFMs(8, L2_input, 0, DUMP_T);
@@ -540,8 +568,8 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[8] = (short int *) meta_alloc(memId_O, outputSizesB[8]);
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[5]);
+	L2_output[8] = (short int *) meta_alloc(MEM_ID_O9, outputSizesB[8]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W6, L3_sizes[5]);
 
 	L3toL2(L3_weights[5], L2_weights, L3_sizes[5]);
 
@@ -572,15 +600,13 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[8], 8);
 #endif
 
-	meta_free(memId_W, L3_sizes[5]);
-	meta_free(0, outputSizesB[7]);
-	meta_free(0, outputSizesB[6]);
+	meta_free(MEM_ID_W6, L3_sizes[5]);
+	meta_free(MEM_ID_O8, outputSizesB[7]);
+	meta_free(MEM_ID_O7, outputSizesB[6]);
 	
 
 /* --------------------------------- LAYER 7 -------------------------------- */
-	L2_input = L2_output[4];
-	memId_O = 0;
-	memId_W = 0;
+	L2_input = L2_output[5];
 
 #if defined(DUMP_I) && (DUMP_I==9 || DUMP_I==18)
 	dumpFMs(9, L2_input, 0, DUMP_T);
@@ -590,8 +616,8 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[9] = (short int *) meta_alloc(memId_O, outputSizesB[9]);
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[6]);
+	L2_output[9] = (short int *) meta_alloc(MEM_ID_O10, outputSizesB[9]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W7, L3_sizes[6]);
 
 	L3toL2(L3_weights[6], L2_weights, L3_sizes[6]);
 
@@ -622,7 +648,7 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[9], 9);
 #endif
 
-	meta_free(memId_W, L3_sizes[6]);
+	meta_free(MEM_ID_W7, L3_sizes[6]);
 	
 
 /* -------------------------------- ADD RES 2 -------------------------------- */
@@ -652,13 +678,12 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[10], 10);
 #endif
 
-	meta_free(1, outputSizesB[8]);
-	meta_free(1, outputSizesB[4]);
+	meta_free(MEM_ID_O9, outputSizesB[8]);
+	meta_free(MEM_ID_O4, outputSizesB[3]);
 	
 
 /* --------------------------------- LAYER 8 -------------------------------- */
 	L2_input = L2_output[10];
-	memId_O = 0;
 
 #if defined(DUMP_I) && (DUMP_I==11 || DUMP_I==18)
 	dumpFMs(11, L2_input, 0, DUMP_T);
@@ -669,7 +694,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[11] = (short int *) meta_alloc(memId_O, outputSizesB[11]);
+	L2_output[11] = (short int *) meta_alloc(MEM_ID_O12, outputSizesB[11]);
 
 	ReLU_SW_3(L2_input, L2_output[11], 0);
 
@@ -687,8 +712,6 @@ __rt_cluster_push_fc_event(event_capture);
 	
 
 	L2_input = L2_output[11];
-	memId_O = 1;
-	memId_W = 0;
 
 #if defined(DUMP_I) && (DUMP_I==12 || DUMP_I==18)
 	dumpFMs(12, L2_input, 0, DUMP_T);
@@ -698,8 +721,8 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[12] = (short int *) meta_alloc(memId_O, outputSizesB[12]);
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[7]);
+	L2_output[12] = (short int *) meta_alloc(MEM_ID_O13, outputSizesB[12]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W8, L3_sizes[7]);
 
 	L3toL2(L3_weights[7], L2_weights, L3_sizes[7]);
 
@@ -730,14 +753,12 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[12], 12);
 #endif
 
-	meta_free(memId_W, L3_sizes[7]);
-	meta_free(0, outputSizesB[11]);
+	meta_free(MEM_ID_W8, L3_sizes[7]);
+	meta_free(MEM_ID_O12, outputSizesB[11]);
 	
 
 /* --------------------------------- LAYER 9 -------------------------------- */
 	L2_input = L2_output[12];
-	memId_O = 1;
-	memId_W = 0;
 
 #if defined(DUMP_I) && (DUMP_I==13 || DUMP_I==18)
 	dumpFMs(13, L2_input, 0, DUMP_T);
@@ -747,8 +768,8 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[13] = (short int *) meta_alloc(memId_O, outputSizesB[13]);
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[8]);
+	L2_output[13] = (short int *) meta_alloc(MEM_ID_O14, outputSizesB[13]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W9, L3_sizes[8]);
 
 	L3toL2(L3_weights[8], L2_weights, L3_sizes[8]);
 
@@ -779,13 +800,11 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[13], 13);
 #endif
 
-	meta_free(memId_W, L3_sizes[8]);
+	meta_free(MEM_ID_W9, L3_sizes[8]);
 	
 
 /* --------------------------------- LAYER 10 ------------------------------- */
 	L2_input = L2_output[9];
-	memId_O = 0;
-	memId_W = 1;
 
 #if defined(DUMP_I) && (DUMP_I==14 || DUMP_I==18)
 	dumpFMs(14, L2_input, 0, DUMP_T);
@@ -795,8 +814,8 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[14] = (short int *) meta_alloc(memId_O, outputSizesB[14]);
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[9]);
+	L2_output[14] = (short int *) meta_alloc(MEM_ID_O15, outputSizesB[14]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W10, L3_sizes[9]);
 
 	L3toL2(L3_weights[9], L2_weights, L3_sizes[9]);
 
@@ -827,7 +846,7 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[14], 14);
 #endif
 
-	meta_free(memId_W, L3_sizes[9]);
+	meta_free(MEM_ID_W10, L3_sizes[9]);
 
 
 /* -------------------------------- ADD RES 3 -------------------------------- */
@@ -857,14 +876,12 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[15], 15);
 #endif
 
-	meta_free(1, outputSizesB[13]);
-	meta_free(1, outputSizesB[12]);
+	meta_free(MEM_ID_O14, outputSizesB[13]);
+	meta_free(MEM_ID_O13, outputSizesB[12]);
 
 
 /* --------------------------------- DENSE 1 -------------------------------- */
 	L2_input = L2_output[15];
-	memId_O = 1;
-	memId_W = 1;
 
 #if defined(DUMP_I) && (DUMP_I==16 || DUMP_I==18)
 	dumpFMs(16, L2_input, 0, DUMP_T);
@@ -874,8 +891,8 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[16] = (short int *) meta_alloc(memId_O, outputSizesB[16]+2);
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[10]);
+	L2_output[16] = (short int *) meta_alloc(MEM_ID_O17, outputSizesB[16]+2);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W11, L3_sizes[10]);
 
 	L3toL2(L3_weights[10], L2_weights, L3_sizes[10]);
 
@@ -906,15 +923,13 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[16], 16);
 #endif
 
-	meta_free(memId_W, L3_sizes[10]);
+	meta_free(MEM_ID_W11, L3_sizes[10]);
 	SPIM_tx[0] = L2_output[16][0];
-	meta_free(memId_O, outputSizesB[16]+2);
+	meta_free(MEM_ID_O17, outputSizesB[16]+2);
 
 
 /* --------------------------------- DENSE 2 -------------------------------- */
 	L2_input = L2_output[15];
-	memId_O = 1;
-	memId_W = 1;
 
 #if defined(DUMP_I) && (DUMP_I==17 || DUMP_I==18)
 	dumpFMs(17, L2_input, 0, DUMP_T);
@@ -924,8 +939,8 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[17] = (short int *) meta_alloc(memId_O, outputSizesB[17]+2);
-	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[11]);
+	L2_output[17] = (short int *) meta_alloc(MEM_ID_O18, outputSizesB[17]+2);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W12, L3_sizes[11]);
 
 	L3toL2(L3_weights[11], L2_weights, L3_sizes[11]);
 
@@ -956,11 +971,11 @@ __rt_cluster_push_fc_event(event_capture);
 	check_layer(L2_output[17], 17);
 #endif
 
-	meta_free(memId_W, L3_sizes[11]);
+	meta_free(MEM_ID_W12, L3_sizes[11]);
 	SPIM_tx[1] = L2_output[17][0];
-	meta_free(memId_O, outputSizesB[17]+2);
-	meta_free(0, outputSizesB[14]);
-	meta_free(0, outputSizesB[9]);
+	meta_free(MEM_ID_O18, outputSizesB[17]+2);
+	meta_free(MEM_ID_O15, outputSizesB[14]);
+	meta_free(MEM_ID_O10, outputSizesB[9]);
 
 
 /* -------------------------------------------------------------------------- */
@@ -1089,6 +1104,7 @@ int main() {
 
 		// L3 Memory allocation for all the Layer's weights (i.e.HyperRam)
 		L3_weights[i] = (short int *) rt_hyperram_alloc(hyperram, L3_sizes[i]);
+		
 		if(L3_weights[i] == NULL) {
 #ifdef VERBOSE
 			printf("Error Allocating L3: Layer %d\n", i+1); 
@@ -1195,16 +1211,19 @@ int main() {
 	Norm_Factor[10] = Q_Factor[10];
 	Norm_Factor[11] = Q_Factor[11];
 
-	for(int i=0; i<NUM_L2_BUFF; i++) {
-		L2_base[i] = rt_alloc(RT_ALLOC_L2_CL_DATA, L2_buffers_size[i]);
-		L2_next_free[i] = L2_base[i];
+ 	for(int i=0; i<NUM_L2_BUFF; i+=2) {
+ 		L2_base[i] = rt_alloc(RT_ALLOC_L2_CL_DATA, L2_buffers_size[i/2]);
+ 		L2_next_free[i] = L2_base[i];
+		L2_next_free[i+1] = L2_base[i] + L2_buffers_size[0];
 
-#ifdef VERBOSE
-		printf("L2 Buffer alloc\t%dB\t@ 0x%08x:\t%s\n", L2_buffers_size[i], (unsigned int)L2_base[i], L2_base[i]?"Ok":"Failed");
-#endif
-		if(L2_base[i] == NULL) return -1;
-	}
-
+ #ifdef VERBOSE
+ 		printf("L2 Buffer alloc\t%dB\t@ 0x%08x:\t%s\n", L2_buffers_size[i/2], (unsigned int)L2_base[i/2], L2_base[i/2]?"Ok":"Failed");
+ #endif
+ 		if(L2_base[i/2] == NULL) return -1;
+ 	}
+	
+	//O5 has to be moved to L3 to save space in L2
+	L3_temp_O5 = (short int *) rt_hyperram_alloc(hyperram, outputSizesB[4]);
 	// allocate the memory of L2 for the image buffer
 	int image_size_bytes = MAX(CAM_CROP_W*CAM_CROP_H*sizeof(short int), CAM_FULLRES_W*CAM_FULLRES_H*sizeof(unsigned char));
 	L2_image = rt_alloc(RT_ALLOC_L2_CL_DATA, image_size_bytes);
@@ -1399,7 +1418,7 @@ int main() {
 
 	rt_free(RT_ALLOC_L2_CL_DATA, L2_image, CAM_CROP_W*CAM_CROP_H*sizeof(short int));
 
-	for(int i=0; i<NUM_L2_BUFF; i++)
+	for(int i=0; i<NUM_L2_BUFF; i+=2)
 		rt_free(RT_ALLOC_L2_CL_DATA, L2_base[i], L2_buffers_size[i]);
 
 	// free HyperRam
