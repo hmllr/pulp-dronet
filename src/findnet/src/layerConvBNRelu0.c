@@ -158,7 +158,6 @@ void layerConvBNRelu0(
   unsigned int l2_W,
   unsigned int l1_buffer
 ) {
-
   if(rt_core_id()==0){
     im2col = l1_buffer + 36978;
     // copy first tiles
@@ -204,7 +203,6 @@ void layerConvBNRelu0(
   // bias is not double buffered
     rt_dma_wait(&dma_read_evt_k);
     rt_dma_wait(&dma_read_evt_lambda);
-
     // wait for x,W read
     mchan_barrier(dma_read_evt_x);
     mchan_free(dma_read_evt_x);

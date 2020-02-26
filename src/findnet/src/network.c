@@ -17,20 +17,21 @@
 #include "layerConvBNRelu7.h"
 #include "layerConvBNRelu6.h"
 #include "layerMaxPool1.h"
+#include "PULPDronetKernels.h"
 
 #define FLASH_BUFF_SIZE 128
 //#define VERBOSE 1
 static const char * L3_weights_files[] = {
   "ConvBNRelu0_weights.hex", "ConvBNRelu2_weights.hex", "ConvBNRelu3_weights.hex", "ConvBNRelu4_weights.hex", "ConvBNRelu5_weights.hex", "ConvBNRelu6_weights.hex", "ConvBNRelu7_weights.hex", "Gemm9_weights.hex"
 };
-extern char *     L2_base[2];//NUM_L2_BUFF];
+extern char *     L2_base[1];//NUM_L2_BUFF/2];
 const int activations_size[] = {
   6480, 51840, 14336, 14336, 14336, 7168, 7168, 3584, 3584, 128, 1
 };
-int L3_weights_size[8];
+static int L3_weights_size[8];
 static int L3_weights;
 static int activations_input;
-static rt_hyperram_t* hyperram;
+extern rt_hyperram_t* hyperram;
 
 
 
@@ -66,6 +67,7 @@ static void check_layer_weight(char *weight, int check_sum_true, int dim) {
 /* Moves the weights and the biases from hyperflash to hyperram */
 int network_setup()
 {
+  printf("start HnH setup\n");
   /* PADFRAME CONFIGURATION */
   rt_padframe_profile_t *profile_hyper = rt_pad_profile_get("hyper");
   rt_padframe_set(profile_hyper);
@@ -121,6 +123,7 @@ int network_setup()
       rdDone += size / sizeof(char);
     }
     rt_free(RT_ALLOC_PERIPH,flashBuffer, flashBuffSize);
+    printf("finished setup HnH\n");
   return 1;
 }
 
@@ -137,7 +140,9 @@ void cluster_main(void *arg) {
 
 void pulp_parallel(void *arg)
 {
+  printf("before HnH fork\n");
   rt_team_fork(NUM_CORES, (void *)cluster_main, arg);
+  printf("after HnH fork\n");
 }
 
   int memId;
@@ -150,23 +155,15 @@ void pulp_parallel(void *arg)
 
    char *l1_buffer;
 
-char network_run_FabricController(short int *   L2_image)
+char network_run_FabricController(short int *   L2_image, void* stacks)
 {
-  int arg[2];
+  int arg[3];
   arg[0] = (unsigned int) L3_weights_size;
   arg[1] = (unsigned int) hyperram;
   arg[2] = L2_image;
-  printf("L2_image %d\n", L2_image);
-  PMU_set_voltage(1000, 0);
-  rt_time_wait_us(10000);
-  rt_freq_set(RT_FREQ_DOMAIN_FC, 100000000);
-  rt_time_wait_us(10000);
-  rt_freq_set(RT_FREQ_DOMAIN_CL, 100000000);
-  rt_time_wait_us(10000);
-  rt_cluster_mount(1, 0, 0, NULL);
-  rt_cluster_call(NULL, 0, pulp_parallel, arg, NULL,1024+1024, 1024+1024, rt_nb_pe(), NULL);
-  printf("Finished fork\n");
-  rt_cluster_mount(0, 0, 0, NULL);
+
+  rt_cluster_call(NULL, 0, pulp_parallel, arg, stacks,1024+1024, 1024+1024, rt_nb_pe(), NULL);
+
   return *(L2_output);
 }
 
@@ -181,7 +178,7 @@ void network_run(
   {
     L2_buffer_allocation = L2_base[0];//rt_alloc(RT_ALLOC_L2_CL_DATA, 400000);
     L2_buffer_allocation_end = L2_buffer_allocation + 400000;
-    l1_buffer = rt_alloc(RT_ALLOC_CL_DATA,44000 );
+    l1_buffer = PULP_Dronet_L1_Memory; //rt_alloc(RT_ALLOC_CL_DATA,44000 );
 #ifdef VERBOSE
     printf("L2 Buffer alloc initial\t@ 0x%08x:\t%s\n", (unsigned int)L2_buffer_allocation, L2_buffer_allocation?"Ok":"Failed");
 #endif
@@ -262,7 +259,6 @@ void network_run(
   }
 #endif  
   rt_team_barrier();
-  printf("%d %d %d %d %d %d %d %d\n", L2_image[0], L2_image[1], L2_image[2], L2_image[3], L2_image[4], L2_image[5], L2_image[6], L2_image[7]);
   layerConvBNRelu0(
       L2_image,
       L2_output,

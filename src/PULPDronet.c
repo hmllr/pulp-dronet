@@ -34,13 +34,13 @@
 #include "ImgIO.h"
 
 
-static char *			L2_base[NUM_L2_BUFF/2];
+char *					L2_base[NUM_L2_BUFF/2];
 static char *			L2_next_free[NUM_L2_BUFF];
 #ifdef PROFILE_CL
 static int				perf_exe_cum_cl[NLAYERS];
 static int				perf_mem_cum_cl[NLAYERS];
 #endif
-static rt_hyperram_t *	hyperram;
+
 static rt_camera_t *	camera;
 static int				imgTransferDone = 0;
 static rt_event_t *		event_capture;
@@ -58,6 +58,10 @@ static short int		SPIM_tx[SPIM_BUFFER/2]; // divided by 2 because in bytes
 static short int		SPIM_rx[SPIM_BUFFER/2]; // divided by 2 because in bytes
 
 static short int *		L3_temp_O5;
+
+static char				dronet = 0;
+
+rt_hyperram_t* hyperram; // not static as used by findnet as well
 
 
 unsigned int PMU_set_voltage(unsigned int Voltage, unsigned int CheckFrequencies);
@@ -169,13 +173,27 @@ static void end_of_frame() {
 #if CROPPING == 1
 	unsigned char * origin 		= (unsigned char *) L2_image;
 	unsigned char * ptr_crop 	= (unsigned char *) L2_image;
-	int 			init_offset = CAM_FULLRES_W * LL_Y + LL_X; 
 	int 			outid 		= 0;
+	int cam_crop_h, cam_crop_w, ds_ratio, init_offset;
+
+	if(dronet){
+		printf("Image cropping for DroNet\n");
+		init_offset = CAM_FULLRES_W * LL_Y_DRONET + LL_X_DRONET; 
+		cam_crop_h = CAM_CROP_H_DRONET;
+		cam_crop_w = CAM_CROP_W_DRONET;
+		ds_ratio = DS_RATIO_DRONET;
+	}else{
+		printf("Image cropping for Findnet\n");
+		init_offset = CAM_FULLRES_W * LL_Y_FINDNET + LL_X_FINDNET; 
+		cam_crop_h = CAM_CROP_H_FINDNET;
+		cam_crop_w = CAM_CROP_W_FINDNET;
+		ds_ratio = DS_RATIO_FINDNET;
+	}
 	
-	for(int i=0; i<CAM_CROP_H; i+=DS_RATIO) {	
+	for(int i=0; i<cam_crop_h; i+=ds_ratio) {	
 		rt_event_execute(NULL, 0);
 		unsigned char * line = ptr_crop + init_offset + CAM_FULLRES_W * i;
-		for(int j=0; j<CAM_CROP_W; j+=DS_RATIO) {
+		for(int j=0; j<cam_crop_w; j+=ds_ratio) {
 			origin[outid] = line[j];
 			#ifdef PRINT_IMAGES
 				printf("%d,",origin[outid]);
@@ -186,18 +204,17 @@ static void end_of_frame() {
 #endif
 
 #ifdef SHOW_IMAGES
-  WriteImageToFile("../../../NN_input_image.ppm",CAM_CROP_W/DS_RATIO,CAM_CROP_H/DS_RATIO,L2_image);
+  WriteImageToFile("../../../NN_input_image.ppm",cam_crop_w/ds_ratio,cam_crop_h/ds_ratio,L2_image);
 #endif //SHOW_IMAGES
-	//TODO fix for dronet with subsampling and when to extend to 16bit
-	int dronet = 0;
+	
 	// we need chars for H/nH and short int for dronet 
 	if(dronet){
 		unsigned char * ptr = (unsigned char *) L2_image;
 
-		for(int i=CAM_CROP_H-1; i>=0; i--) {
+		for(int i=CAM_CROP_H_DRONET-1; i>=0; i--) {
 			rt_event_execute(NULL, 0);
-			for(int j=CAM_CROP_W-1; j>=0; j--) {
-				L2_image[i*CAM_CROP_W+j] = (short int) ptr[i*CAM_CROP_W+j];
+			for(int j=CAM_CROP_W_DRONET-1; j>=0; j--) {
+				L2_image[i*CAM_CROP_W_DRONET+j] = (short int) ptr[i*CAM_CROP_W_DRONET+j];
 			}
 		}
 	}
@@ -246,7 +263,6 @@ static void RunPULPDronet() {
 	// set SPI header - take care, SPIM_tx is 16bit, not 8!
 	SPIM_tx[0] = PULP_NAV_MSG_TYPE + (PULP_NAV_MSG_DRONET << 8);
 
-
 /* --------------------------------- LAYER 1 -------------------------------- */
 	L2_input = L2_image;
 
@@ -268,9 +284,7 @@ static void RunPULPDronet() {
 	perf_mem_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
 	LargeParConv_5x5_S2_Max2x2_S2_H_1(L2_input, L2_weights, L2_output[0], Norm_Factor[0], L2_bias[0], 0);
-
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
@@ -295,7 +309,6 @@ static void RunPULPDronet() {
 
 
 /* -------------------- TRIGGER A NEW IMG TRANSFER ON FC -------------------- */
-
 __rt_cluster_push_fc_event(event_capture);
 
 /* --------------------------------- LAYER 4 -------------------------------- */
@@ -473,7 +486,9 @@ __rt_cluster_push_fc_event(event_capture);
 	// reload O5 from L3
 	L2_output[4] = (short int *) meta_alloc(MEM_ID_O5, outputSizesB[4]);
 	L3toL2(L3_temp_O5, L2_output[4], outputSizesB[4]);
+#ifdef CHECKSUM
 	check_layer(L2_output[4], 4);
+#endif	
 
 /* -------------------------------- ADD RES 1 -------------------------------- */
 	L2_input = L2_output[4];
@@ -1254,7 +1269,7 @@ int main() {
 	//O5 has to be moved to L3 to save space in L2
 	L3_temp_O5 = (short int *) rt_hyperram_alloc(hyperram, outputSizesB[4]);
 	// allocate the memory of L2 for the image buffer
-	int image_size_bytes = MAX((CAM_CROP_W/DS_RATIO)*(CAM_CROP_H/DS_RATIO)*sizeof(short int), CAM_FULLRES_W*CAM_FULLRES_H*sizeof(unsigned char));
+	int image_size_bytes = MAX(MAX((CAM_CROP_W_DRONET/DS_RATIO_DRONET)*(CAM_CROP_H_DRONET/DS_RATIO_DRONET)*sizeof(short int), (CAM_CROP_W_FINDNET/DS_RATIO_FINDNET)*(CAM_CROP_H_FINDNET/DS_RATIO_FINDNET)*sizeof(char)),CAM_FULLRES_W*CAM_FULLRES_H*sizeof(unsigned char));
 	L2_image = rt_alloc(RT_ALLOC_L2_CL_DATA, image_size_bytes);
 #ifdef VERBOSE
 	printf("L2 Image alloc\t%dB\t@ 0x%08x:\t%s\n", image_size_bytes, (unsigned int) L2_image, L2_image?"Ok":"Failed");
@@ -1273,7 +1288,7 @@ int main() {
 	
 	PULP_Dronet_L1_Memory = rt_alloc(RT_ALLOC_CL_DATA, _PULP_Dronet_L1_Memory_SIZE);
 #ifdef VERBOSE
-	printf("L1 Buffer alloc\t%dB\t@ 0x%08x:\t%s\n", _PULP_Dronet_L1_Memory_SIZE, (unsigned int) PULP_Dronet_L1_Memory, PULP_Dronet_L1_Memory?"Ok":"Failed");
+	printf("L1 Buffer alloc\t%dB\t@ 0xYes%08x:\t%s\n", _PULP_Dronet_L1_Memory_SIZE, (unsigned int) PULP_Dronet_L1_Memory, PULP_Dronet_L1_Memory?"Ok":"Failed");
  #endif
 	if(PULP_Dronet_L1_Memory == NULL) return -1;
 
@@ -1347,16 +1362,16 @@ int main() {
 
 	rt_cam_control(camera, CMD_INIT, 0);
 
-#if defined(CROPPING) && CROPPING == 0
-	rt_img_slice_t slicer;
-	slicer.slice_ll.x = LL_X;
-	slicer.slice_ll.y = LL_Y;
-	slicer.slice_ur.x = UR_X;
-	slicer.slice_ur.y = UR_Y;
+// #if defined(CROPPING) && CROPPING == 0
+// 	rt_img_slice_t slicer;
+// 	slicer.slice_ll.x = LL_X;
+// 	slicer.slice_ll.y = LL_Y;
+// 	slicer.slice_ur.x = UR_X;
+// 	slicer.slice_ur.y = UR_Y;
 	
-	rt_cam_control(camera, CMD_START, 0);
-	rt_cam_control(camera, CMD_SLICE, &slicer);
-#endif
+// 	rt_cam_control(camera, CMD_START, 0);
+// 	rt_cam_control(camera, CMD_SLICE, &slicer);
+// #endif
 
 	// wait the camera to setup
 	if(rt_platform() == ARCHI_PLATFORM_BOARD)
@@ -1392,28 +1407,44 @@ int main() {
 		rt_perf_reset(&perf_fc);
 		rt_perf_start(&perf_fc);
 #endif
-
 		// wait on input image transfer 
 		while(imgTransferDone==0) {
 			rt_event_yield(NULL);
 		}
 		imgTransferDone=0;
 
-		//event_cluster = rt_event_get_blocking(NULL);
-		//event_capture = rt_event_get(NULL, enqueue_capture, NULL);
-
 		// execute the H/nH NN on the cluster
 		
-		printf("L2_image %d\n", L2_image);
-	  	char head = network_run_FabricController(L2_image);
-	  	SPIM_tx[0] = PULP_NAV_MSG_TYPE + (PULP_NAV_MSG_HEAD << 8);
-	  	SPIM_tx[1] = head << 8; //3rd byte of SPIM_tx
-	  	printf("SPIM_tx: %d %d \n", SPIM_tx[0], SPIM_tx[1]);
-	  	enqueue_capture();
-	  	printf("pushed event\n");
-		// execute the function "RunPULPDronet" on the cluster
-		//rt_cluster_call(NULL, CID, (void *) RunPULPDronet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), event_cluster);
+		// printf("L2_image %d\n", L2_image);
+	  	char head = network_run_FabricController(L2_image, stacks);
+		dronet = 1; //TODO
 
+		
+		// int arg[3];
+		//   arg[0] = (unsigned int) L3_weights_size;
+		//   arg[1] = (unsigned int) hyperram;
+		//   arg[2] = L2_image;
+
+
+	  	//rt_cluster_call(NULL, CID, (void *)pulp_parallel, arg, stacks,1024+1024, 1024+1024, 1/*rt_nb_pe()*/, NULL);//event_cluster);
+
+	   	SPIM_tx[0] = PULP_NAV_MSG_TYPE + (PULP_NAV_MSG_HEAD << 8);
+	   	SPIM_tx[1] = head << 8; //3rd byte of SPIM_tx
+	 //  	printf("SPIM_tx: %d %d \n", SPIM_tx[0], SPIM_tx[1]);
+	    enqueue_capture();
+	 //  	printf("pushed event\n");
+	  	//event_cluster = rt_event_get_blocking(NULL);
+		
+
+		// execute the function "RunPULPDronet" on the cluster
+		while(imgTransferDone==0) {
+			rt_event_yield(NULL);
+		}
+		imgTransferDone=0;
+		dronet = 0;
+		event_capture = rt_event_get(NULL, enqueue_capture, NULL);
+
+		rt_cluster_call(NULL, CID, (void *) RunPULPDronet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
 		//rt_event_wait(event_cluster);
 
 #ifdef SPI_COMM

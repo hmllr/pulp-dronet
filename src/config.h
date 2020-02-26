@@ -32,14 +32,17 @@
 // #define CHECKSUM					// Enables correctness check per layer
 // #define PROFILE_CL				// Profiling execution from the Cluster
 // #define PROFILE_FC				// Profiling execution from the Fabric Ctrl
-#define PLATFORM		1			// Select 1 for PULP-Shield/GV-SoC or 2 for GAPuino
-#define CROPPING 		1			// Image cropping enable: 0 in HW, 1 in SW
+#define PLATFORM		2			// Select 1 for PULP-Shield/GV-SoC or 2 for GAPuino
+#define CROPPING 		1			// Image cropping enable: 0 in HW, 1 in SW, HW not supported at the moment!
 #define SPI_COMM					// Enables SPI communication
 #define CAM_FULLRES_W	324			// HiMax full width 324
 #define CAM_FULLRES_H	244			// HiMax full height 244
-#define CAM_CROP_W		324//108//200			// Cropped camera width 
-#define CAM_CROP_H		180//244//60//200			// Cropped camera height 
-#define DS_RATIO		3			// downsampling ratio after cropping
+#define CAM_CROP_W_FINDNET		324//108//200			// Cropped camera width 
+#define CAM_CROP_H_FINDNET		180//244//60//200			// Cropped camera height 
+#define DS_RATIO_FINDNET		3			// downsampling ratio after cropping
+#define CAM_CROP_W_DRONET		200			// Cropped camera width 
+#define CAM_CROP_H_DRONET		200			// Cropped camera height 
+#define DS_RATIO_DRONET			1			// downsampling ratio after cropping
 #define	NORM_INPUT		8			// Input image Norm Factor [Default Q8.8]
 #define NORM_ACT		11			// Activations Norm Factor [Default Q5.11]
 /***************************** DEBUGGING SUPPORT ******************************/
@@ -127,32 +130,40 @@
  ******************************************************************************/
 
 #if CROPPING_X==0 		// X Left [0-200]
-#define LL_X			0 								// left x coordinate 0
+#define LL_X_DRONET			0 								// left x coordinate 0
+#define LL_X_FINDNET		0 								// left x coordinate 0
 #elif CROPPING_X==1		// X Central [62-262]
-#define LL_X			((CAM_FULLRES_W-CAM_CROP_W)/2) 	// left x coordinate 62
+#define LL_X_DRONET			((CAM_FULLRES_W - CAM_CROP_W_DRONET)/2) 	// left x coordinate 62
+#define LL_X_FINDNET		((CAM_FULLRES_W - CAM_CROP_W_FINDNET)/2) 	// left x coordinate 62
 #elif CROPPING_X==2		// X Right [124-324]
-#define LL_X			(CAM_FULLRES_W-CAM_CROP_W) 		// left x coordinate 124
+#define LL_X_DRONET			(CAM_FULLRES_W - CAM_CROP_W_DRONET) 		// left x coordinate 124
+#define LL_X_FINDNET		(CAM_FULLRES_W - CAM_CROP_W_FINDNET) 		// left x coordinate 124
 #endif
 
 #if CROPPING_Y==0 		// Y Top [0-200]
-#define LL_Y			0								// up y coordinate 0
+#define LL_Y_DRONET			0								// up y coordinate 0
+#define LL_Y_FINDNET		0								// up y coordinate 0
 #elif CROPPING_Y==1 	// Y Central [22-222]
-#define LL_Y			((CAM_FULLRES_H-CAM_CROP_H)/2)	// up y coordinate 22
+#define LL_Y_DRONET			((CAM_FULLRES_H - CAM_CROP_H_DRONET)/2)	// up y coordinate 22
+#define LL_Y_FINDNET		((CAM_FULLRES_H - CAM_CROP_H_FINDNET)/2)	// up y coordinate 22
 #elif CROPPING_Y==2 	// Y Bottom [44-244]
-#define LL_Y			(CAM_FULLRES_H-CAM_CROP_H)		// up y coordinate 44
+#define LL_Y_DRONET			(CAM_FULLRES_H - CAM_CROP_H_DRONET)		// up y coordinate 44
+#define LL_Y_FINDNET		(CAM_FULLRES_H - CAM_CROP_H_FINDNET)		// up y coordinate 44
 #endif
 
-#define UR_X			CAM_CROP_W+LL_X					// right x coordinate
-#define UR_Y			CAM_CROP_H+LL_Y 				// bottom y coordinate
+#define UR_X_DRONET			CAM_CROP_W_DRONET + LL_X_DRONET					// right x coordinate
+#define UR_X_FINDNET		CAM_CROP_W_FINDNET + LL_X_FINDNET					// right x coordinate
+#define UR_Y_DRONET			CAM_CROP_H_DRONET + LL_Y_DRONET 				// bottom y coordinate
+#define UR_Y_FINDNET		CAM_CROP_H_FINDNET + LL_Y_FINDNET 				// bottom y coordinate
 
 /******************************************************************************/
 
 #if !defined(CROPPING) || CROPPING==1
 #define CAM_WIDTH		CAM_FULLRES_W
 #define CAM_HEIGHT		CAM_FULLRES_H
-#else
-#define CAM_WIDTH		CAM_CROP_W
-#define CAM_HEIGHT		CAM_CROP_H
+// #else
+// #define CAM_WIDTH		CAM_CROP_W
+// #define CAM_HEIGHT		CAM_CROP_H
 #endif
 
 // preventing binary size inflating L2
