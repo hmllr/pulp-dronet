@@ -1521,3 +1521,122 @@ void LinearLayer_SW_2(
 	/* ===================End Write Last Tile=========================================== */
 }
 
+void LinearLayer_SW_3(
+		Word16 * __restrict__ In,
+		Word16 * __restrict__ Filter,
+		unsigned int NormFilter,
+		Word16 * __restrict__ Bias,
+		unsigned int NormBias,
+		Word16 * __restrict__ Out,
+		int OutSize,
+		Kernel_T *Ker)
+
+{
+	/* Local variables used by this kernel */
+	rt_dma_copy_t DmaR_Evt1;
+	rt_dma_copy_t DmaR_Evt2;
+	rt_dma_copy_t DmaR_Evt3;
+	rt_dma_copy_t DmaW_Evt1;
+	int Iter;
+	int Last, NextLast, NextNextLast;
+	int N_Ti = 0;
+	int N_TiIp = 0, InPlane, OutPlane=0;
+	KerLinearLayer_fpT S_KerArg0, *KerArg0 = &S_KerArg0;
+
+	/* Initialize KerArg, Kernel invariant arguments */
+	KerArg0->InSize = (int) (1024);
+	KerArg0->NormFilter = (NormFilter);
+	KerArg0->NormBias = (NormBias);
+	KerArg0->OutSize = (int) (1);
+	/* =======================Read First Tile=========================================== */
+	/* Initial reads in L2, O_DB or O_BUFF */
+	rt_dma_memcpy((rt_pointerT) In+0, (rt_pointerT) (PULP_Dronet_L1_Memory + 0)+0, 2048, RT_DMA_DIR_EXT2LOC, 0, &DmaR_Evt1);
+	rt_dma_memcpy((rt_pointerT) Bias+(0), (rt_pointerT) (PULP_Dronet_L1_Memory + 2048)+0, 2, RT_DMA_DIR_EXT2LOC, 0, &DmaR_Evt2);
+	rt_dma_memcpy((rt_pointerT) Filter+(0), (rt_pointerT) (PULP_Dronet_L1_Memory + 2052)+0, 2048, RT_DMA_DIR_EXT2LOC, 0, &DmaR_Evt3);
+	/* Wait for BUFF read in L2 */
+	rt_dma_wait(&DmaR_Evt1);
+	rt_dma_wait(&DmaR_Evt2);
+	rt_dma_wait(&DmaR_Evt3);
+	/* ===================End Read First Tile=========================================== */
+	/* Kernel Iteration Loop on Iter space */
+	Iter=0; {
+		/* Loop Iteration Body on Iter space */
+		/* Elaborate Last, Next_Last, Next_Next_Last */
+		Last = ((Iter+1) == 1); NextLast = ((Iter+2) == 1); NextNextLast = ((Iter+3) == 1);
+		/* Call Kernel LOC_INNER_LOOP */
+		KerArg0->In = (Word16 * __restrict__) ((rt_pointerT) (PULP_Dronet_L1_Memory + 0) + 0);
+		KerArg0->Filter = (Word16 * __restrict__) ((rt_pointerT) (PULP_Dronet_L1_Memory + 2052) + 0 + (0)*2048);
+		KerArg0->Bias = (Word16 *  __restrict__) ((rt_pointerT) (PULP_Dronet_L1_Memory + 2048) + 0 + (0)*2);
+		KerArg0->Out = (Word16 *  __restrict__) ((rt_pointerT) (PULP_Dronet_L1_Memory + 4100) + 0 + (0)*2);
+		rt_team_fork(gap8_ncore(), (void *) KerLinearLayer_fp, (void *) KerArg0);
+		N_Ti++;
+		/* End Kernel Iteration Loop on Iter space */
+	}
+	Iter=1;
+	/* =======================Write Last Tile=========================================== */
+	rt_dma_memcpy((rt_pointerT) Out + (0),
+		(rt_pointerT) (PULP_Dronet_L1_Memory + 4100) + 0, 2, RT_DMA_DIR_LOC2EXT, 0, &DmaW_Evt1);
+	rt_dma_wait(&DmaW_Evt1);
+	/* ===================End Write Last Tile=========================================== */
+}
+
+void LinearLayer_SW_4(
+		Word16 * __restrict__ In,
+		Word16 * __restrict__ Filter,
+		unsigned int NormFilter,
+		Word16 * __restrict__ Bias,
+		unsigned int NormBias,
+		Word16 * __restrict__ Out,
+		int OutSize,
+		Kernel_T *Ker)
+
+{
+	/* Local variables used by this kernel */
+	rt_dma_copy_t DmaR_Evt1;
+	rt_dma_copy_t DmaR_Evt2;
+	rt_dma_copy_t DmaR_Evt3;
+	rt_dma_copy_t DmaW_Evt1;
+	int Iter;
+	int Last, NextLast, NextNextLast;
+	int N_Ti = 0;
+	int N_TiIp = 0, InPlane, OutPlane=0;
+	KerLinearLayer_fpT S_KerArg0, *KerArg0 = &S_KerArg0;
+
+	/* Initialize KerArg, Kernel invariant arguments */
+	KerArg0->InSize = (int) (1024);
+	KerArg0->NormFilter = (NormFilter);
+	KerArg0->NormBias = (NormBias);
+	KerArg0->OutSize = (int) (1);
+	/* =======================Read First Tile=========================================== */
+	/* Initial reads in L2, O_DB or O_BUFF */
+	rt_dma_memcpy((rt_pointerT) In+0, (rt_pointerT) (PULP_Dronet_L1_Memory + 0)+0, 2048, RT_DMA_DIR_EXT2LOC, 0, &DmaR_Evt1);
+	rt_dma_memcpy((rt_pointerT) Bias+(0), (rt_pointerT) (PULP_Dronet_L1_Memory + 2048)+0, 2, RT_DMA_DIR_EXT2LOC, 0, &DmaR_Evt2);
+	rt_dma_memcpy((rt_pointerT) Filter+(0), (rt_pointerT) (PULP_Dronet_L1_Memory + 2052)+0, 2048, RT_DMA_DIR_EXT2LOC, 0, &DmaR_Evt3);
+	/* Wait for BUFF read in L2 */
+	rt_dma_wait(&DmaR_Evt1);
+	rt_dma_wait(&DmaR_Evt2);
+	rt_dma_wait(&DmaR_Evt3);
+	/* ===================End Read First Tile=========================================== */
+	/* Kernel Iteration Loop on Iter space */
+	Iter=0; {
+		/* Loop Iteration Body on Iter space */
+		/* Elaborate Last, Next_Last, Next_Next_Last */
+		Last = ((Iter+1) == 1); NextLast = ((Iter+2) == 1); NextNextLast = ((Iter+3) == 1);
+		/* Call Kernel LOC_INNER_LOOP */
+		KerArg0->In = (Word16 * __restrict__) ((rt_pointerT) (PULP_Dronet_L1_Memory + 0) + 0);
+		KerArg0->Filter = (Word16 * __restrict__) ((rt_pointerT) (PULP_Dronet_L1_Memory + 2052) + 0 + (0)*2048);
+		KerArg0->Bias = (Word16 *  __restrict__) ((rt_pointerT) (PULP_Dronet_L1_Memory + 2048) + 0 + (0)*2);
+		KerArg0->Out = (Word16 *  __restrict__) ((rt_pointerT) (PULP_Dronet_L1_Memory + 4100) + 0 + (0)*2);
+		rt_team_fork(gap8_ncore(), (void *) KerLinearLayer_fp, (void *) KerArg0);
+		N_Ti++;
+		/* End Kernel Iteration Loop on Iter space */
+	}
+	Iter=1;
+	/* =======================Write Last Tile=========================================== */
+	rt_dma_memcpy((rt_pointerT) Out + (0),
+		(rt_pointerT) (PULP_Dronet_L1_Memory + 4100) + 0, 2, RT_DMA_DIR_LOC2EXT, 0, &DmaW_Evt1);
+	rt_dma_wait(&DmaW_Evt1);
+	/* ===================End Write Last Tile=========================================== */
+}
+
+

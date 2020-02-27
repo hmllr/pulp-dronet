@@ -143,4 +143,22 @@ extern void LinearLayer_SW_2(
 		Word16 * __restrict__ Out,
 		int OutSize,
 		Kernel_T *Ker);
+extern void LinearLayer_SW_3(
+		Word16 * __restrict__ In,
+		Word16 * __restrict__ Filter,
+		unsigned int NormFilter,
+		Word16 * __restrict__ Bias,
+		unsigned int NormBias,
+		Word16 * __restrict__ Out,
+		int OutSize,
+		Kernel_T *Ker);
+extern void LinearLayer_SW_4(
+		Word16 * __restrict__ In,
+		Word16 * __restrict__ Filter,
+		unsigned int NormFilter,
+		Word16 * __restrict__ Bias,
+		unsigned int NormBias,
+		Word16 * __restrict__ Out,
+		int OutSize,
+		Kernel_T *Ker);
 #endif

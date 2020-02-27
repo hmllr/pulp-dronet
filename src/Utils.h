@@ -56,7 +56,7 @@ static signed short int float2fixed(float x, unsigned int qf) {
  * FM: pointer to the feature maps
  * in_out: select to dump input FMs (0) or output FMs (1)
  * type: select to print as fixed-point (0) or float (1) */
-static void dumpFMs(int id, short int *FM, int in_out, int type) {
+static void dumpFMs(int id, short int *FM, int in_out, int type, int netId) {
 
 	int channels	= 0;
 	int size		= 0;
@@ -65,15 +65,15 @@ static void dumpFMs(int id, short int *FM, int in_out, int type) {
 	int height		= 0;
 
 	if(in_out==0) {	// Input
-		channels	= inCh[id];
-		width		= inW[id];
-		height		= inH[id];
+		channels	= inCh[netId][id];
+		width		= inW[netId][id];
+		height		= inH[netId][id];
 		// We always use Q11 for FMs except for the Input Q8
 		if(id==0) Norm = NORM_INPUT;
 	} else {		// Output
-		channels	= outCh[id];
-		width		= outW[id];
-		height		= outH[id];
+		channels	= outCh[netId][id];
+		width		= outW[netId][id];
+		height		= outH[netId][id];
 	}
 
 #ifdef VERBOSE
@@ -97,13 +97,13 @@ static void dumpFMs(int id, short int *FM, int in_out, int type) {
  * id: layer id to be dumped
  * W: pointer to the weights
  * type: select to print as fixed-point (0) or float (1) */
-static void dumpW(int id, short int *W, int type) {
+static void dumpW(int id, short int *W, int type, netId) {
 
-	int ich		= inCh[id];
-	int och		= outCh[id];
-	int kWidth	= kerW[LAYERS_MAPPING_LUT[id]];
-	int kHeight	= kerH[LAYERS_MAPPING_LUT[id]];
-	int qFact	= Q_Factor[LAYERS_MAPPING_LUT[id]];
+	int ich		= inCh[netId][id];
+	int och		= outCh[netId][id];
+	int kWidth	= kerW[netId][LAYERS_MAPPING_LUT[netId][id]];
+	int kHeight	= kerH[netId][LAYERS_MAPPING_LUT[netId][id]];
+	int qFact	= Q_Factor[LAYERS_MAPPING_LUT[netId][id]];
 
 #ifdef VERBOSE
 	printf("== layer %d ==\n", id);
@@ -128,9 +128,9 @@ static void dumpW(int id, short int *W, int type) {
  * id: layer id to be dumped
  * bias: pointer to the bias
  * type: select to print as fixed-point (0) or float (1) */
-static void dumpBias(int id, short int *bias, int type) {
+static void dumpBias(int id, short int *bias, int type, netId) {
 
-	int och = outCh[id];
+	int och = outCh[netId][id];
 
 #ifdef VERBOSE
 	printf("== layer %d ==\n", id);

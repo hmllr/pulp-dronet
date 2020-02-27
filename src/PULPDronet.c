@@ -45,17 +45,18 @@ static rt_camera_t *	camera;
 static int				imgTransferDone = 0;
 static rt_event_t *		event_capture;
 static rt_event_t *		event_cluster;
-static int 				outputSizesB[NLAYERS];
+static int 				outputSizesB[NNETS][NLAYERS];
 static short int *		L2_image;
 static int 				image_size_bytes;
-static short int *		L2_bias[NWEIGTHS];
-static short int *		L3_weights[NWEIGTHS];
-static int				L3_sizes[NWEIGTHS]; 
-static unsigned int		L2_bias_sizes[NWEIGTHS]; 
+static short int *		L2_bias[NNETS][NWEIGTHS];
+static short int *		L3_weights[NNETS][NWEIGTHS];
+static int				L3_sizes[NNETS][NWEIGTHS]; 
+static unsigned int		L2_bias_sizes[NNETS][NWEIGTHS]; 
 static int 				Norm_Factor[NWEIGTHS];
 
 static short int		SPIM_tx[SPIM_BUFFER/2]; // divided by 2 because in bytes
 static short int		SPIM_rx[SPIM_BUFFER/2]; // divided by 2 because in bytes
+static rt_spim_t * 		spim;
 
 static short int *		L3_temp_O5;
 
@@ -243,6 +244,908 @@ static void enqueue_capture() {
 | '--------------' || '--------------' || '--------------' |
  '----------------'  '----------------'  '----------------*/
 
+static void RunPULPFrontnet() {
+
+	short int *L2_input;
+	short int *L2_weights;
+	short int *L2_output[NLAYERS];
+	int memId_O = 0;
+	int memId_I = 0;
+	int memId_W = 0;
+
+#ifdef PROFILE_CL
+	int perf_start;
+	rt_perf_t perf_cl;
+	rt_perf_init(&perf_cl);
+	rt_perf_conf(&perf_cl, (1<<RT_PERF_CYCLES));
+	rt_perf_reset(&perf_cl);
+	rt_perf_start(&perf_cl);
+#endif
+
+/* --------------------------------- LAYER 1 -------------------------------- */
+	L2_input = L2_image;
+	memId_O = 0;
+	memId_W = 0;
+
+#if defined(DUMP_I) && (DUMP_I==0 || DUMP_I==20)
+	dumpFMs(0, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[0] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][0]);
+
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][0]);
+
+	L3toL2(L3_weights[0], L2_weights, L3_sizes[FRONTNET_ID][0]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	LargeParConv_5x5_S2_Max2x2_S2_H_1(L2_input, L2_weights, L2_output[0], Norm_Factor[0], L2_bias[FRONTNET_ID][0], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==0 || DUMP_W==20)
+	dumpW(0, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==0 || DUMP_B==20)
+	dumpBias(0, L2_bias[FRONTNET_ID][0], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==0 || DUMP_O==20) 
+	dumpFMs(0, L2_output[0], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[0], 0);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][0]);
+
+
+/* -------------------- TRIGGER A NEW IMG TRANSFER ON FC -------------------- */
+
+__rt_cluster_push_fc_event(event_capture);
+
+/* --------------------------------- LAYER 2 -------------------------------- */
+	L2_input = L2_output[0];
+	memId_O = 0;
+
+#if defined(DUMP_I) && (DUMP_I==1 || DUMP_I==20)
+	dumpFMs(1, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[1] = 0;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[1] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][1]);
+
+	ReLU_SW_1(L2_input, L2_output[1], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[1] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==1 || DUMP_O==20)
+	dumpFMs(1, L2_output[1], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[1], 1);
+#endif
+
+	L2_input = L2_output[1];
+	memId_O = 1;
+	memId_W = 1;
+
+#if defined(DUMP_I) && (DUMP_I==2 || DUMP_I==20)
+	dumpFMs(2, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[2] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][2]);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][1]);
+
+	L3toL2(L3_weights[FRONTNET_ID][1], L2_weights, L3_sizes[FRONTNET_ID][1]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	MedParConv_3x3_S2_ReLU_2(L2_input, L2_weights, L2_output[2], Norm_Factor[1], L2_bias[FRONTNET_ID][1], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==2 || DUMP_W==20)
+	dumpW(2, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==2 || DUMP_B==20)
+	dumpBias(2, L2_bias[FRONTNET_ID][1], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==2 || DUMP_O==20)
+	dumpFMs(2, L2_output[2], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[2], 2);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][1]);
+	meta_free(0, outputSizesB[FRONTNET_ID][1]);
+
+
+/* --------------------------------- LAYER 3 -------------------------------- */
+	L2_input = L2_output[2];
+	memId_O = 0;
+	memId_W = 1;
+
+#if defined(DUMP_I) && (DUMP_I==3 || DUMP_I==20)
+	dumpFMs(3, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[3] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][3]);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][2]);
+
+	L3toL2(L3_weights[FRONTNET_ID][2], L2_weights, L3_sizes[FRONTNET_ID][2]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	MedParConv_3x3_S1_3(L2_input, L2_weights, L2_output[3], Norm_Factor[2], L2_bias[FRONTNET_ID][2], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==3 || DUMP_W==20)
+	dumpW(3, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==3 || DUMP_B==20)
+	dumpBias(3, L2_bias[FRONTNET_ID][2], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==3 || DUMP_O==20)
+	dumpFMs(3, L2_output[3], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[3], 3);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][2]);
+	meta_free(1, outputSizesB[FRONTNET_ID][2]);
+
+
+/* --------------------------------- LAYER 4 -------------------------------- */
+	L2_input = L2_output[0];
+	memId_O = 1;
+	memId_W = 1;
+
+#if defined(DUMP_I) && (DUMP_I==4 || DUMP_I==20)
+	dumpFMs(4, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[4] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][4]);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][3]);
+
+	L3toL2(L3_weights[FRONTNET_ID][3], L2_weights, L3_sizes[FRONTNET_ID][3]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[4] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	MedParConv_1x1_S2_4(L2_input, L2_weights, L2_output[4], Norm_Factor[3], L2_bias[FRONTNET_ID][3], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[4] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==4 || DUMP_W==20)
+	dumpW(4, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==4 || DUMP_B==20)
+	dumpBias(4, L2_bias[FRONTNET_ID][3], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==4 || DUMP_O==20)
+	dumpFMs(4, L2_output[4], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[4], 4);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][3]);
+
+
+/* -------------------------------- ADD RES 1 -------------------------------- */
+	L2_input = L2_output[3];
+	L2_output[5] = L2_output[4];
+
+#if defined(DUMP_I) && (DUMP_I==5 || DUMP_I==20)
+	dumpFMs(5, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[5] = 0;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	AddFeatureMaps_SW_1(L2_input, L2_output[5], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[5] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==5 || DUMP_O==20)
+	dumpFMs(5, L2_output[5], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[5], 5);
+#endif
+
+	meta_free(0, outputSizesB[FRONTNET_ID][3]);
+	meta_free(0, outputSizesB[FRONTNET_ID][0]);
+
+
+/* --------------------------------- LAYER 5 -------------------------------- */
+	L2_input = L2_output[5];
+	memId_O = 0;
+
+#if defined(DUMP_I) && (DUMP_I==6 || DUMP_I==20)
+	dumpFMs(6, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[6] = 0;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[6] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][6]);
+
+	ReLU_SW_2(L2_input, L2_output[6], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[6] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==6 || DUMP_O==20)
+	dumpFMs(6, L2_output[6], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[6], 6);
+#endif
+	
+	L2_input = L2_output[6];
+	memId_O = 0;
+	memId_W = 0;
+
+#if defined(DUMP_I) && (DUMP_I==7 || DUMP_I==20)
+	dumpFMs(7, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[7] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][7]);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][4]);
+
+	L3toL2(L3_weights[FRONTNET_ID][4], L2_weights, L3_sizes[FRONTNET_ID][4]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[7] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	MedParConv_3x3_S2_ReLU_5(L2_input, L2_weights, L2_output[7], Norm_Factor[4], L2_bias[FRONTNET_ID][4], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[7] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==7 || DUMP_W==20)
+	dumpW(7, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==7 || DUMP_B==20)
+	dumpBias(7, L2_bias[FRONTNET_ID][4], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==7 || DUMP_O==20)
+	dumpFMs(7, L2_output[7], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[7], 7);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][4]);
+	
+
+/* --------------------------------- LAYER 6 -------------------------------- */
+	L2_input = L2_output[7];
+	memId_O = 1;
+	memId_W = 0;
+
+#if defined(DUMP_I) && (DUMP_I==8 || DUMP_I==20)
+	dumpFMs(8, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[8] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][8]);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][5]);
+
+	L3toL2(L3_weights[FRONTNET_ID][5], L2_weights, L3_sizes[FRONTNET_ID][5]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[8] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	MedParConv_3x3_S1_6(L2_input, L2_weights, L2_output[8], Norm_Factor[5], L2_bias[FRONTNET_ID][5], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[8] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==8 || DUMP_W==20)
+	dumpW(8, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==8 || DUMP_B==20)
+	dumpBias(8, L2_bias[FRONTNET_ID][5], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==8 || DUMP_O==20)
+	dumpFMs(8, L2_output[8], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[8], 8);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][5]);
+	meta_free(0, outputSizesB[FRONTNET_ID][7]);
+	meta_free(0, outputSizesB[FRONTNET_ID][6]);
+	
+
+/* --------------------------------- LAYER 7 -------------------------------- */
+	L2_input = L2_output[4];
+	memId_O = 0;
+	memId_W = 0;
+
+#if defined(DUMP_I) && (DUMP_I==9 || DUMP_I==20)
+	dumpFMs(9, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[9] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][9]);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][6]);
+
+	L3toL2(L3_weights[FRONTNET_ID][6], L2_weights, L3_sizes[FRONTNET_ID][6]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[9] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	MedParConv_1x1_S2_7(L2_input, L2_weights, L2_output[9], Norm_Factor[6], L2_bias[FRONTNET_ID][6], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[9] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==9 || DUMP_W==20)
+	dumpW(9, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==9 || DUMP_B==20)
+	dumpBias(9, L2_bias[FRONTNET_ID][6], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==9 || DUMP_O==20)
+	dumpFMs(9, L2_output[9], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[9], 9);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][6]);
+
+
+/* -------------------------------- ADD RES 2 -------------------------------- */
+	L2_input = L2_output[8];
+	L2_output[10] = L2_output[9];
+
+#if defined(DUMP_I) && (DUMP_I==10 || DUMP_I==20)
+	dumpFMs(10, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[10] = 0;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	AddFeatureMaps_SW_2(L2_input, L2_output[10], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[10] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==10 || DUMP_O==20)
+	dumpFMs(10, L2_output[10], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[10], 10);
+#endif
+
+	meta_free(1, outputSizesB[FRONTNET_ID][8]);
+	meta_free(1, outputSizesB[FRONTNET_ID][4]);
+	
+
+/* --------------------------------- LAYER 8 -------------------------------- */
+	L2_input = L2_output[10];
+	memId_O = 0;
+
+#if defined(DUMP_I) && (DUMP_I==11 || DUMP_I==20)
+	dumpFMs(11, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[11] = 0;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[11] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][11]);
+
+	ReLU_SW_3(L2_input, L2_output[11], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[11] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==11 || DUMP_O==20)
+	dumpFMs(11, L2_output[11], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[11], 11);
+#endif
+
+	L2_input = L2_output[11];
+	memId_O = 1;
+	memId_W = 0;
+
+#if defined(DUMP_I) && (DUMP_I==12 || DUMP_I==20)
+	dumpFMs(12, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[12] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][12]);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][7]);
+
+	L3toL2(L3_weights[FRONTNET_ID][7], L2_weights, L3_sizes[FRONTNET_ID][7]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[12] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	MedParConv_3x3_S2_ReLU_8(L2_input, L2_weights, L2_output[12], Norm_Factor[7], L2_bias[FRONTNET_ID][7], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[12] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==12 || DUMP_W==20)
+	dumpW(12, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==12 || DUMP_B==20)
+	dumpBias(12, L2_bias[FRONTNET_ID][7], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==12 || DUMP_O==20)
+	dumpFMs(12, L2_output[12], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[12], 12);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][7]);
+	meta_free(0, outputSizesB[FRONTNET_ID][11]);
+
+
+/* --------------------------------- LAYER 9 -------------------------------- */
+	L2_input = L2_output[12];
+	memId_O = 1;
+	memId_W = 0;
+
+#if defined(DUMP_I) && (DUMP_I==13 || DUMP_I==20)
+	dumpFMs(13, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[13] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][13]);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][8]);
+
+	L3toL2(L3_weights[FRONTNET_ID][8], L2_weights, L3_sizes[FRONTNET_ID][8]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[13] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	MedParConv_3x3_S1_9(L2_input, L2_weights, L2_output[13], Norm_Factor[8], L2_bias[FRONTNET_ID][8], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[13] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==13 || DUMP_W==20)
+	dumpW(13, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==13 || DUMP_B==20)
+	dumpBias(13, L2_bias[FRONTNET_ID][8], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==13 || DUMP_O==20)
+	dumpFMs(13, L2_output[13], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[13], 13);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][8]);
+	
+
+/* --------------------------------- LAYER 10 ------------------------------- */
+	L2_input = L2_output[9];
+	memId_O = 0;
+	memId_W = 1;
+
+#if defined(DUMP_I) && (DUMP_I==14 || DUMP_I==20)
+	dumpFMs(14, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[14] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][14]);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][9]);
+
+	L3toL2(L3_weights[FRONTNET_ID][9], L2_weights, L3_sizes[FRONTNET_ID][9]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[14] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	MedParConv_1x1_S1_ReLU_10(L2_input, L2_weights, L2_output[14], Norm_Factor[9], L2_bias[FRONTNET_ID][9], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[14] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==14 || DUMP_W==20)
+	dumpW(14, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==14 || DUMP_B==20)
+	dumpBias(14, L2_bias[FRONTNET_ID][9], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==14 || DUMP_O==20)
+	dumpFMs(14, L2_output[14], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[14], 14);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][9]);
+
+
+/* -------------------------------- ADD RES 3 -------------------------------- */
+	L2_input = L2_output[13];
+	L2_output[15] = L2_output[14];
+
+#if defined(DUMP_I) && (DUMP_I==15 || DUMP_I==20)
+	dumpFMs(15, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[15] = 0;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	AddFeatureMapsReLu_SW_3(L2_input, L2_output[15], 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[15] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==15 || DUMP_O==20)
+	dumpFMs(15, L2_output[15], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[15], 15);
+#endif
+
+	meta_free(1, outputSizesB[FRONTNET_ID][13]);
+	meta_free(1, outputSizesB[FRONTNET_ID][12]);
+
+
+/* --------------------------------- DENSE 1 -------------------------------- */
+	L2_input = L2_output[15];
+	memId_O = 1;
+	memId_W = 1;
+
+#if defined(DUMP_I) && (DUMP_I==16 || DUMP_I==20)
+	dumpFMs(16, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[16] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][16]+2);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][10]);
+
+	L3toL2(L3_weights[FRONTNET_ID][10], L2_weights, L3_sizes[FRONTNET_ID][10]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[16] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	LinearLayer_SW_1(L2_input, L2_weights, Norm_Factor[10], L2_bias[FRONTNET_ID][10], NORM_BIAS_DENSE, L2_output[16], 0, 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[16] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==16 || DUMP_W==20)
+	dumpW(16, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==16 || DUMP_B==20)
+	dumpBias(16, L2_bias[FRONTNET_ID][10], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==16 || DUMP_O==20)
+	dumpFMs(16, L2_output[16], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[16], 16);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][10]);
+	SPIM_tx[0] = L2_output[16][0];
+	meta_free(memId_O, outputSizesB[FRONTNET_ID][16]+2);
+
+
+/* --------------------------------- DENSE 2 -------------------------------- */
+	L2_input = L2_output[15];
+	memId_O = 1;
+	memId_W = 1;
+
+#if defined(DUMP_I) && (DUMP_I==17 || DUMP_I==20)
+	dumpFMs(17, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[17] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][17]+2);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][11]);
+
+	L3toL2(L3_weights[FRONTNET_ID][11], L2_weights, L3_sizes[FRONTNET_ID][11]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[17] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	LinearLayer_SW_2(L2_input, L2_weights, Norm_Factor[11], L2_bias[FRONTNET_ID][11], NORM_BIAS_DENSE, L2_output[17], 0, 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[17] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==17 || DUMP_W==20)
+	dumpW(17, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==17 || DUMP_B==20)
+	dumpBias(17, L2_bias[FRONTNET_ID][11], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==17 || DUMP_O==20)
+	dumpFMs(17, L2_output[17], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[17], 17);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][11]);
+	SPIM_tx[1] = L2_output[17][0];
+	meta_free(memId_O, outputSizesB[FRONTNET_ID][17]+2);
+
+
+/* --------------------------------- DENSE 3 -------------------------------- */
+	L2_input = L2_output[15];
+	memId_O = 1;
+	memId_W = 1;
+
+#if defined(DUMP_I) && (DUMP_I==18 || DUMP_I==20)
+	dumpFMs(18, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[18] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][18]+2);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][12]);
+
+	L3toL2(L3_weights[FRONTNET_ID][12], L2_weights, L3_sizes[FRONTNET_ID][12]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[18] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	LinearLayer_SW_3(L2_input, L2_weights, Norm_Factor[12], L2_bias[FRONTNET_ID][12], NORM_BIAS_DENSE, L2_output[18], 0, 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[18] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==18 || DUMP_W==20)
+	dumpW(18, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==18 || DUMP_B==20)
+	dumpBias(18, L2_bias[FRONTNET_ID][12], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==18 || DUMP_O==20)
+	dumpFMs(18, L2_output[18], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[18], 18);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][12]);
+	SPIM_tx[2] = L2_output[18][0];
+	meta_free(memId_O, outputSizesB[FRONTNET_ID][18]+2);
+
+/* --------------------------------- DENSE 4 -------------------------------- */
+	L2_input = L2_output[15];
+	memId_O = 1;
+	memId_W = 1;
+
+#if defined(DUMP_I) && (DUMP_I==19 || DUMP_I==20)
+	dumpFMs(19, L2_input, 0, DUMP_T, FRONTNET_ID);
+#endif
+
+
+#ifdef PROFILE_CL
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	L2_output[19] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][19]+2);
+	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][13]);
+
+	L3toL2(L3_weights[FRONTNET_ID][13], L2_weights, L3_sizes[FRONTNET_ID][13]);
+
+#ifdef PROFILE_CL
+	perf_mem_cum_cl[19] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
+#endif
+
+	LinearLayer_SW_4(L2_input, L2_weights, Norm_Factor[13], L2_bias[FRONTNET_ID][13], NORM_BIAS_DENSE, L2_output[19], 0, 0);
+
+#ifdef PROFILE_CL
+	perf_exe_cum_cl[19] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+#endif
+
+#if defined(DUMP_W) && (DUMP_W==19 || DUMP_W==20)
+	dumpW(19, L2_weights, DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_B) && (DUMP_B==19 || DUMP_B==20)
+	dumpBias(19, L2_bias[FRONTNET_ID][13], DUMP_T, FRONTNET_ID);
+#endif
+
+#if defined(DUMP_O) && (DUMP_O==19 || DUMP_O==20)
+	dumpFMs(19, L2_output[19], 1, DUMP_T, FRONTNET_ID);
+#endif
+
+#ifdef CHECKSUM
+	check_layer(L2_output[19], 19);
+#endif
+
+	meta_free(memId_W, L3_sizes[FRONTNET_ID][13]);
+	SPIM_tx[3] = L2_output[19][0];
+	meta_free(memId_O, outputSizesB[FRONTNET_ID][19]+2);
+	meta_free(0, outputSizesB[FRONTNET_ID][14]);
+	meta_free(0, outputSizesB[FRONTNET_ID][9]);
+
+/* -------------------------------------------------------------------------- */
+
+
+#ifdef PROFILE_CL
+	rt_perf_stop(&perf_cl);
+	rt_perf_save(&perf_cl);
+
+	printf("CL Cycles:\t\tL3/L2 Memory\t\tExecution\n");
+	for(int i=0; i<NLAYERS; i++) {
+		printf("Layer %2d\t\t%10d\t\t%10d\n", i+1, perf_mem_cum_cl[i], perf_exe_cum_cl[i]);
+	}
+	printf("Total (mem+exe): %10d\n", rt_perf_get(&perf_cl, RT_PERF_CYCLES));
+#endif
+
+}
+
 static void RunPULPDronet() {
 
 	short int *L2_input;
@@ -267,45 +1170,45 @@ static void RunPULPDronet() {
 	L2_input = L2_image;
 
 #if defined(DUMP_I) && (DUMP_I==0 || DUMP_I==18)
-	dumpFMs(0, L2_input, 0, DUMP_T);
+	dumpFMs(0, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[0] = (short int *) meta_alloc(MEM_ID_O1, outputSizesB[0]); 
+	L2_output[0] = (short int *) meta_alloc(MEM_ID_O1, outputSizesB[DRONET_ID][0]); 
 
-	L2_weights = (short int *) meta_alloc(MEM_ID_W1, L3_sizes[0]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W1, L3_sizes[DRONET_ID][0]);
 
-	L3toL2(L3_weights[0], L2_weights, L3_sizes[0]);
+	L3toL2(L3_weights[0], L2_weights, L3_sizes[DRONET_ID][0]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-	LargeParConv_5x5_S2_Max2x2_S2_H_1(L2_input, L2_weights, L2_output[0], Norm_Factor[0], L2_bias[0], 0);
+	LargeParConv_5x5_S2_Max2x2_S2_H_1(L2_input, L2_weights, L2_output[0], Norm_Factor[0], L2_bias[DRONET_ID][0], 0);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==0 || DUMP_W==18)
-	dumpW(0, L2_weights, DUMP_T);
+	dumpW(0, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==0 || DUMP_B==18)
-	dumpBias(0, L2_bias[0], DUMP_T);
+	dumpBias(0, L2_bias[DRONET_ID][0], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==0 || DUMP_O==18) 
-	dumpFMs(0, L2_output[0], 1, DUMP_T);
+	dumpFMs(0, L2_output[0], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[0], 0);
 #endif
 
-	meta_free(MEM_ID_W1, L3_sizes[0]);
+	meta_free(MEM_ID_W1, L3_sizes[DRONET_ID][0]);
 
 
 /* -------------------- TRIGGER A NEW IMG TRANSFER ON FC -------------------- */
@@ -315,49 +1218,49 @@ __rt_cluster_push_fc_event(event_capture);
 	L2_input = L2_output[0];
 
 #if defined(DUMP_I) && (DUMP_I==4 || DUMP_I==18)
-	dumpFMs(4, L2_input, 0, DUMP_T);
+	dumpFMs(4, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[4] = (short int *) meta_alloc(MEM_ID_O5, outputSizesB[4]);
-	L2_weights = (short int *) meta_alloc(MEM_ID_W4, L3_sizes[3]);
+	L2_output[4] = (short int *) meta_alloc(MEM_ID_O5, outputSizesB[DRONET_ID][4]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W4, L3_sizes[DRONET_ID][3]);
 
-	L3toL2(L3_weights[3], L2_weights, L3_sizes[3]);
+	L3toL2(L3_weights[DRONET_ID][3], L2_weights, L3_sizes[DRONET_ID][3]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[4] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_1x1_S2_4(L2_input, L2_weights, L2_output[4], Norm_Factor[3], L2_bias[3], 0);
+	MedParConv_1x1_S2_4(L2_input, L2_weights, L2_output[4], Norm_Factor[3], L2_bias[DRONET_ID][3], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[4] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==4 || DUMP_W==18)
-	dumpW(4, L2_weights, DUMP_T);
+	dumpW(4, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==4 || DUMP_B==18)
-	dumpBias(4, L2_bias[3], DUMP_T);
+	dumpBias(4, L2_bias[DRONET_ID][3], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==4 || DUMP_O==18)
-	dumpFMs(4, L2_output[4], 1, DUMP_T);
+	dumpFMs(4, L2_output[4], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[4], 4);
 #endif
 
-	meta_free(MEM_ID_W4, L3_sizes[3]);
+	meta_free(MEM_ID_W4, L3_sizes[DRONET_ID][3]);
 	// move O5 to L3 to save L2
-	L2toL3(L3_temp_O5, L2_output[4], outputSizesB[4]);
-	meta_free(MEM_ID_O5, outputSizesB[4]);
+	L2toL3(L3_temp_O5, L2_output[4], outputSizesB[DRONET_ID][4]);
+	meta_free(MEM_ID_O5, outputSizesB[DRONET_ID][4]);
 
 
 /* --------------------------------- LAYER 2 -------------------------------- */
@@ -365,7 +1268,7 @@ __rt_cluster_push_fc_event(event_capture);
 	L2_input = L2_output[0];
 
 #if defined(DUMP_I) && (DUMP_I==1 || DUMP_I==18)
-	dumpFMs(1, L2_input, 0, DUMP_T);
+	dumpFMs(1, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
@@ -373,7 +1276,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[1] = (short int *) meta_alloc(MEM_ID_O2, outputSizesB[1]);
+	L2_output[1] = (short int *) meta_alloc(MEM_ID_O2, outputSizesB[DRONET_ID][1]);
 
 	ReLU_SW_1(L2_input, L2_output[1], 0);
 
@@ -382,110 +1285,110 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==1 || DUMP_O==18)
-	dumpFMs(1, L2_output[1], 1, DUMP_T);
+	dumpFMs(1, L2_output[1], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[1], 1);
 #endif
-	meta_free(MEM_ID_O1, outputSizesB[0]);
+	meta_free(MEM_ID_O1, outputSizesB[DRONET_ID][0]);
 
 
 	L2_input = L2_output[1];
 
 #if defined(DUMP_I) && (DUMP_I==2 || DUMP_I==18)
-	dumpFMs(2, L2_input, 0, DUMP_T);
+	dumpFMs(2, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[2] = (short int *) meta_alloc(MEM_ID_O3, outputSizesB[2]);
-	L2_weights = (short int *) meta_alloc(MEM_ID_W2, L3_sizes[1]);
+	L2_output[2] = (short int *) meta_alloc(MEM_ID_O3, outputSizesB[DRONET_ID][2]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W2, L3_sizes[DRONET_ID][1]);
 
-	L3toL2(L3_weights[1], L2_weights, L3_sizes[1]);
+	L3toL2(L3_weights[DRONET_ID][1], L2_weights, L3_sizes[DRONET_ID][1]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S2_ReLU_2(L2_input, L2_weights, L2_output[2], Norm_Factor[1], L2_bias[1], 0);
+	MedParConv_3x3_S2_ReLU_2(L2_input, L2_weights, L2_output[2], Norm_Factor[1], L2_bias[DRONET_ID][1], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==2 || DUMP_W==18)
-	dumpW(2, L2_weights, DUMP_T);
+	dumpW(2, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==2 || DUMP_B==18)
-	dumpBias(2, L2_bias[1], DUMP_T);
+	dumpBias(2, L2_bias[DRONET_ID][1], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==2 || DUMP_O==18)
-	dumpFMs(2, L2_output[2], 1, DUMP_T);
+	dumpFMs(2, L2_output[2], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[2], 2);
 #endif
 
-	meta_free(MEM_ID_W2, L3_sizes[1]);
-	meta_free(MEM_ID_O2, outputSizesB[1]);
+	meta_free(MEM_ID_W2, L3_sizes[DRONET_ID][1]);
+	meta_free(MEM_ID_O2, outputSizesB[DRONET_ID][1]);
 
 
 /* --------------------------------- LAYER 3 -------------------------------- */
 	L2_input = L2_output[2];
 
 #if defined(DUMP_I) && (DUMP_I==3 || DUMP_I==18)
-	dumpFMs(3, L2_input, 0, DUMP_T);
+	dumpFMs(3, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[3] = (short int *) meta_alloc(MEM_ID_O4, outputSizesB[3]);
-	L2_weights = (short int *) meta_alloc(MEM_ID_W3, L3_sizes[2]);
+	L2_output[3] = (short int *) meta_alloc(MEM_ID_O4, outputSizesB[DRONET_ID][3]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W3, L3_sizes[DRONET_ID][2]);
 
-	L3toL2(L3_weights[2], L2_weights, L3_sizes[2]);
+	L3toL2(L3_weights[DRONET_ID][2], L2_weights, L3_sizes[DRONET_ID][2]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S1_3(L2_input, L2_weights, L2_output[3], Norm_Factor[2], L2_bias[2], 0);
+	MedParConv_3x3_S1_3(L2_input, L2_weights, L2_output[3], Norm_Factor[2], L2_bias[DRONET_ID][2], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==3 || DUMP_W==18)
-	dumpW(3, L2_weights, DUMP_T);
+	dumpW(3, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==3 || DUMP_B==18)
-	dumpBias(3, L2_bias[2], DUMP_T);
+	dumpBias(3, L2_bias[DRONET_ID][2], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==3 || DUMP_O==18)
-	dumpFMs(3, L2_output[3], 1, DUMP_T);
+	dumpFMs(3, L2_output[3], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[3], 3);
 #endif
 
-	meta_free(MEM_ID_W3, L3_sizes[2]);
-	meta_free(MEM_ID_O3, outputSizesB[2]);
+	meta_free(MEM_ID_W3, L3_sizes[DRONET_ID][2]);
+	meta_free(MEM_ID_O3, outputSizesB[DRONET_ID][2]);
 	
 	// reload O5 from L3
-	L2_output[4] = (short int *) meta_alloc(MEM_ID_O5, outputSizesB[4]);
-	L3toL2(L3_temp_O5, L2_output[4], outputSizesB[4]);
+	L2_output[4] = (short int *) meta_alloc(MEM_ID_O5, outputSizesB[DRONET_ID][4]);
+	L3toL2(L3_temp_O5, L2_output[4], outputSizesB[DRONET_ID][4]);
 #ifdef CHECKSUM
 	check_layer(L2_output[4], 4);
 #endif	
@@ -495,7 +1398,7 @@ __rt_cluster_push_fc_event(event_capture);
 	L2_output[5] = L2_output[3];
 
 #if defined(DUMP_I) && (DUMP_I==5 || DUMP_I==18)
-	dumpFMs(5, L2_input, 0, DUMP_T);
+	dumpFMs(5, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
@@ -510,21 +1413,21 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==5 || DUMP_O==18)
-	dumpFMs(5, L2_output[5], 1, DUMP_T);
+	dumpFMs(5, L2_output[5], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[5], 5);
 #endif
 
-	meta_free(MEM_ID_O4, outputSizesB[4]);
+	meta_free(MEM_ID_O4, outputSizesB[DRONET_ID][4]);
 	
 
 /* --------------------------------- LAYER 5 -------------------------------- */
 	L2_input = L2_output[5];
 
 #if defined(DUMP_I) && (DUMP_I==6 || DUMP_I==18)
-	dumpFMs(6, L2_input, 0, DUMP_T);
+	dumpFMs(6, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
@@ -532,7 +1435,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[6] = (short int *) meta_alloc(MEM_ID_O7, outputSizesB[6]);
+	L2_output[6] = (short int *) meta_alloc(MEM_ID_O7, outputSizesB[DRONET_ID][6]);
 
 	ReLU_SW_2(L2_input, L2_output[6], 0);
 
@@ -541,7 +1444,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==6 || DUMP_O==18)
-	dumpFMs(6, L2_output[6], 1, DUMP_T);
+	dumpFMs(6, L2_output[6], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
@@ -552,140 +1455,140 @@ __rt_cluster_push_fc_event(event_capture);
 	L2_input = L2_output[6];
 
 #if defined(DUMP_I) && (DUMP_I==7 || DUMP_I==18)
-	dumpFMs(7, L2_input, 0, DUMP_T);
+	dumpFMs(7, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[7] = (short int *) meta_alloc(MEM_ID_O8, outputSizesB[7]);
-	L2_weights = (short int *) meta_alloc(MEM_ID_W5, L3_sizes[4]);
+	L2_output[7] = (short int *) meta_alloc(MEM_ID_O8, outputSizesB[DRONET_ID][7]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W5, L3_sizes[DRONET_ID][4]);
 
-	L3toL2(L3_weights[4], L2_weights, L3_sizes[4]);
+	L3toL2(L3_weights[DRONET_ID][4], L2_weights, L3_sizes[DRONET_ID][4]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[7] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S2_ReLU_5(L2_input, L2_weights, L2_output[7], Norm_Factor[4], L2_bias[4], 0);
+	MedParConv_3x3_S2_ReLU_5(L2_input, L2_weights, L2_output[7], Norm_Factor[4], L2_bias[DRONET_ID][4], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[7] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==7 || DUMP_W==18)
-	dumpW(7, L2_weights, DUMP_T);
+	dumpW(7, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==7 || DUMP_B==18)
-	dumpBias(7, L2_bias[4], DUMP_T);
+	dumpBias(7, L2_bias[DRONET_ID][4], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==7 || DUMP_O==18)
-	dumpFMs(7, L2_output[7], 1, DUMP_T);
+	dumpFMs(7, L2_output[7], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[7], 7);
 #endif
 
-	meta_free(MEM_ID_W5, L3_sizes[4]);
+	meta_free(MEM_ID_W5, L3_sizes[DRONET_ID][4]);
 	
 
 /* --------------------------------- LAYER 6 -------------------------------- */
 	L2_input = L2_output[7];
 
 #if defined(DUMP_I) && (DUMP_I==8 || DUMP_I==18)
-	dumpFMs(8, L2_input, 0, DUMP_T);
+	dumpFMs(8, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[8] = (short int *) meta_alloc(MEM_ID_O9, outputSizesB[8]);
-	L2_weights = (short int *) meta_alloc(MEM_ID_W6, L3_sizes[5]);
+	L2_output[8] = (short int *) meta_alloc(MEM_ID_O9, outputSizesB[DRONET_ID][8]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W6, L3_sizes[DRONET_ID][5]);
 
-	L3toL2(L3_weights[5], L2_weights, L3_sizes[5]);
+	L3toL2(L3_weights[DRONET_ID][5], L2_weights, L3_sizes[DRONET_ID][5]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[8] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S1_6(L2_input, L2_weights, L2_output[8], Norm_Factor[5], L2_bias[5], 0);
+	MedParConv_3x3_S1_6(L2_input, L2_weights, L2_output[8], Norm_Factor[5], L2_bias[DRONET_ID][5], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[8] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==8 || DUMP_W==18)
-	dumpW(8, L2_weights, DUMP_T);
+	dumpW(8, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==8 || DUMP_B==18)
-	dumpBias(8, L2_bias[5], DUMP_T);
+	dumpBias(8, L2_bias[DRONET_ID][5], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==8 || DUMP_O==18)
-	dumpFMs(8, L2_output[8], 1, DUMP_T);
+	dumpFMs(8, L2_output[8], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[8], 8);
 #endif
 
-	meta_free(MEM_ID_W6, L3_sizes[5]);
-	meta_free(MEM_ID_O8, outputSizesB[7]);
-	meta_free(MEM_ID_O7, outputSizesB[6]);
+	meta_free(MEM_ID_W6, L3_sizes[DRONET_ID][5]);
+	meta_free(MEM_ID_O8, outputSizesB[DRONET_ID][7]);
+	meta_free(MEM_ID_O7, outputSizesB[DRONET_ID][6]);
 	
 
 /* --------------------------------- LAYER 7 -------------------------------- */
 	L2_input = L2_output[5];
 
 #if defined(DUMP_I) && (DUMP_I==9 || DUMP_I==18)
-	dumpFMs(9, L2_input, 0, DUMP_T);
+	dumpFMs(9, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[9] = (short int *) meta_alloc(MEM_ID_O10, outputSizesB[9]);
-	L2_weights = (short int *) meta_alloc(MEM_ID_W7, L3_sizes[6]);
+	L2_output[9] = (short int *) meta_alloc(MEM_ID_O10, outputSizesB[DRONET_ID][9]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W7, L3_sizes[DRONET_ID][6]);
 
-	L3toL2(L3_weights[6], L2_weights, L3_sizes[6]);
+	L3toL2(L3_weights[DRONET_ID][6], L2_weights, L3_sizes[DRONET_ID][6]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[9] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_1x1_S2_7(L2_input, L2_weights, L2_output[9], Norm_Factor[6], L2_bias[6], 0);
+	MedParConv_1x1_S2_7(L2_input, L2_weights, L2_output[9], Norm_Factor[6], L2_bias[DRONET_ID][6], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[9] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==9 || DUMP_W==18)
-	dumpW(9, L2_weights, DUMP_T);
+	dumpW(9, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==9 || DUMP_B==18)
-	dumpBias(9, L2_bias[6], DUMP_T);
+	dumpBias(9, L2_bias[DRONET_ID][6], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==9 || DUMP_O==18)
-	dumpFMs(9, L2_output[9], 1, DUMP_T);
+	dumpFMs(9, L2_output[9], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[9], 9);
 #endif
 
-	meta_free(MEM_ID_W7, L3_sizes[6]);
+	meta_free(MEM_ID_W7, L3_sizes[DRONET_ID][6]);
 	
 
 /* -------------------------------- ADD RES 2 -------------------------------- */
@@ -693,7 +1596,7 @@ __rt_cluster_push_fc_event(event_capture);
 	L2_output[10] = L2_output[9];
 
 #if defined(DUMP_I) && (DUMP_I==10 || DUMP_I==18)
-	dumpFMs(10, L2_input, 0, DUMP_T);
+	dumpFMs(10, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
@@ -708,22 +1611,22 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==10 || DUMP_O==18)
-	dumpFMs(10, L2_output[10], 1, DUMP_T);
+	dumpFMs(10, L2_output[10], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[10], 10);
 #endif
 
-	meta_free(MEM_ID_O9, outputSizesB[8]);
-	meta_free(MEM_ID_O4, outputSizesB[3]);
+	meta_free(MEM_ID_O9, outputSizesB[DRONET_ID][8]);
+	meta_free(MEM_ID_O4, outputSizesB[DRONET_ID][3]);
 	
 
 /* --------------------------------- LAYER 8 -------------------------------- */
 	L2_input = L2_output[10];
 
 #if defined(DUMP_I) && (DUMP_I==11 || DUMP_I==18)
-	dumpFMs(11, L2_input, 0, DUMP_T);
+	dumpFMs(11, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
@@ -731,7 +1634,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[11] = (short int *) meta_alloc(MEM_ID_O12, outputSizesB[11]);
+	L2_output[11] = (short int *) meta_alloc(MEM_ID_O12, outputSizesB[DRONET_ID][11]);
 
 	ReLU_SW_3(L2_input, L2_output[11], 0);
 
@@ -740,7 +1643,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==11 || DUMP_O==18)
-	dumpFMs(11, L2_output[11], 1, DUMP_T);
+	dumpFMs(11, L2_output[11], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
@@ -751,139 +1654,139 @@ __rt_cluster_push_fc_event(event_capture);
 	L2_input = L2_output[11];
 
 #if defined(DUMP_I) && (DUMP_I==12 || DUMP_I==18)
-	dumpFMs(12, L2_input, 0, DUMP_T);
+	dumpFMs(12, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[12] = (short int *) meta_alloc(MEM_ID_O13, outputSizesB[12]);
-	L2_weights = (short int *) meta_alloc(MEM_ID_W8, L3_sizes[7]);
+	L2_output[12] = (short int *) meta_alloc(MEM_ID_O13, outputSizesB[DRONET_ID][12]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W8, L3_sizes[DRONET_ID][7]);
 
-	L3toL2(L3_weights[7], L2_weights, L3_sizes[7]);
+	L3toL2(L3_weights[DRONET_ID][7], L2_weights, L3_sizes[DRONET_ID][7]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[12] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S2_ReLU_8(L2_input, L2_weights, L2_output[12], Norm_Factor[7], L2_bias[7], 0);
+	MedParConv_3x3_S2_ReLU_8(L2_input, L2_weights, L2_output[12], Norm_Factor[7], L2_bias[DRONET_ID][7], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[12] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==12 || DUMP_W==18)
-	dumpW(12, L2_weights, DUMP_T);
+	dumpW(12, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==12 || DUMP_B==18)
-	dumpBias(12, L2_bias[7], DUMP_T);
+	dumpBias(12, L2_bias[DRONET_ID][7], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==12 || DUMP_O==18)
-	dumpFMs(12, L2_output[12], 1, DUMP_T);
+	dumpFMs(12, L2_output[12], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[12], 12);
 #endif
 
-	meta_free(MEM_ID_W8, L3_sizes[7]);
-	meta_free(MEM_ID_O12, outputSizesB[11]);
+	meta_free(MEM_ID_W8, L3_sizes[DRONET_ID][7]);
+	meta_free(MEM_ID_O12, outputSizesB[DRONET_ID][11]);
 	
 
 /* --------------------------------- LAYER 9 -------------------------------- */
 	L2_input = L2_output[12];
 
 #if defined(DUMP_I) && (DUMP_I==13 || DUMP_I==18)
-	dumpFMs(13, L2_input, 0, DUMP_T);
+	dumpFMs(13, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[13] = (short int *) meta_alloc(MEM_ID_O14, outputSizesB[13]);
-	L2_weights = (short int *) meta_alloc(MEM_ID_W9, L3_sizes[8]);
+	L2_output[13] = (short int *) meta_alloc(MEM_ID_O14, outputSizesB[DRONET_ID][13]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W9, L3_sizes[DRONET_ID][8]);
 
-	L3toL2(L3_weights[8], L2_weights, L3_sizes[8]);
+	L3toL2(L3_weights[DRONET_ID][8], L2_weights, L3_sizes[DRONET_ID][8]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[13] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S1_9(L2_input, L2_weights, L2_output[13], Norm_Factor[8], L2_bias[8], 0);
+	MedParConv_3x3_S1_9(L2_input, L2_weights, L2_output[13], Norm_Factor[8], L2_bias[DRONET_ID][8], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[13] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==13 || DUMP_W==18)
-	dumpW(13, L2_weights, DUMP_T);
+	dumpW(13, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==13 || DUMP_B==18)
-	dumpBias(13, L2_bias[8], DUMP_T);
+	dumpBias(13, L2_bias[DRONET_ID][8], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==13 || DUMP_O==18)
-	dumpFMs(13, L2_output[13], 1, DUMP_T);
+	dumpFMs(13, L2_output[13], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[13], 13);
 #endif
 
-	meta_free(MEM_ID_W9, L3_sizes[8]);
+	meta_free(MEM_ID_W9, L3_sizes[DRONET_ID][8]);
 	
 
 /* --------------------------------- LAYER 10 ------------------------------- */
 	L2_input = L2_output[9];
 
 #if defined(DUMP_I) && (DUMP_I==14 || DUMP_I==18)
-	dumpFMs(14, L2_input, 0, DUMP_T);
+	dumpFMs(14, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[14] = (short int *) meta_alloc(MEM_ID_O15, outputSizesB[14]);
-	L2_weights = (short int *) meta_alloc(MEM_ID_W10, L3_sizes[9]);
+	L2_output[14] = (short int *) meta_alloc(MEM_ID_O15, outputSizesB[DRONET_ID][14]);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W10, L3_sizes[DRONET_ID][9]);
 
-	L3toL2(L3_weights[9], L2_weights, L3_sizes[9]);
+	L3toL2(L3_weights[DRONET_ID][9], L2_weights, L3_sizes[DRONET_ID][9]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[14] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_1x1_S1_ReLU_10(L2_input, L2_weights, L2_output[14], Norm_Factor[9], L2_bias[9], 0);
+	MedParConv_1x1_S1_ReLU_10(L2_input, L2_weights, L2_output[14], Norm_Factor[9], L2_bias[DRONET_ID][9], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[14] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==14 || DUMP_W==18)
-	dumpW(14, L2_weights, DUMP_T);
+	dumpW(14, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==14 || DUMP_B==18)
-	dumpBias(14, L2_bias[9], DUMP_T);
+	dumpBias(14, L2_bias[DRONET_ID][9], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==14 || DUMP_O==18)
-	dumpFMs(14, L2_output[14], 1, DUMP_T);
+	dumpFMs(14, L2_output[14], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[14], 14);
 #endif
 
-	meta_free(MEM_ID_W10, L3_sizes[9]);
+	meta_free(MEM_ID_W10, L3_sizes[DRONET_ID][9]);
 
 
 /* -------------------------------- ADD RES 3 -------------------------------- */
@@ -891,7 +1794,7 @@ __rt_cluster_push_fc_event(event_capture);
 	L2_output[15] = L2_output[14];
 
 #if defined(DUMP_I) && (DUMP_I==15 || DUMP_I==18)
-	dumpFMs(15, L2_input, 0, DUMP_T);
+	dumpFMs(15, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
@@ -906,112 +1809,112 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==15 || DUMP_O==18)
-	dumpFMs(15, L2_output[15], 1, DUMP_T);
+	dumpFMs(15, L2_output[15], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[15], 15);
 #endif
 
-	meta_free(MEM_ID_O14, outputSizesB[13]);
-	meta_free(MEM_ID_O13, outputSizesB[12]);
+	meta_free(MEM_ID_O14, outputSizesB[DRONET_ID][13]);
+	meta_free(MEM_ID_O13, outputSizesB[DRONET_ID][12]);
 
 
 /* --------------------------------- DENSE 1 -------------------------------- */
 	L2_input = L2_output[15];
 
 #if defined(DUMP_I) && (DUMP_I==16 || DUMP_I==18)
-	dumpFMs(16, L2_input, 0, DUMP_T);
+	dumpFMs(16, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[16] = (short int *) meta_alloc(MEM_ID_O17, outputSizesB[16]+2);
-	L2_weights = (short int *) meta_alloc(MEM_ID_W11, L3_sizes[10]);
+	L2_output[16] = (short int *) meta_alloc(MEM_ID_O17, outputSizesB[DRONET_ID][16]+2);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W11, L3_sizes[DRONET_ID][10]);
 
-	L3toL2(L3_weights[10], L2_weights, L3_sizes[10]);
+	L3toL2(L3_weights[DRONET_ID][10], L2_weights, L3_sizes[DRONET_ID][10]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[16] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	LinearLayer_SW_1(L2_input, L2_weights, Norm_Factor[10], L2_bias[10], NORM_BIAS_DENSE, L2_output[16], 0, 0);
+	LinearLayer_SW_1(L2_input, L2_weights, Norm_Factor[10], L2_bias[DRONET_ID][10], NORM_BIAS_DENSE, L2_output[16], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[16] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==16 || DUMP_W==18)
-	dumpW(16, L2_weights, DUMP_T);
+	dumpW(16, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==16 || DUMP_B==18)
-	dumpBias(16, L2_bias[10], DUMP_T);
+	dumpBias(16, L2_bias[DRONET_ID][10], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==16 || DUMP_O==18)
-	dumpFMs(16, L2_output[16], 1, DUMP_T);
+	dumpFMs(16, L2_output[16], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[16], 16);
 #endif
 
-	meta_free(MEM_ID_W11, L3_sizes[10]);
+	meta_free(MEM_ID_W11, L3_sizes[DRONET_ID][10]);
 	SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0] = L2_output[16][0];
-	meta_free(MEM_ID_O17, outputSizesB[16]+2);
+	meta_free(MEM_ID_O17, outputSizesB[DRONET_ID][16]+2);
 
 /* --------------------------------- DENSE 2 -------------------------------- */
 	L2_input = L2_output[15];
 
 #if defined(DUMP_I) && (DUMP_I==17 || DUMP_I==18)
-	dumpFMs(17, L2_input, 0, DUMP_T);
+	dumpFMs(17, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	L2_output[17] = (short int *) meta_alloc(MEM_ID_O18, outputSizesB[17]+2);
-	L2_weights = (short int *) meta_alloc(MEM_ID_W12, L3_sizes[11]);
+	L2_output[17] = (short int *) meta_alloc(MEM_ID_O18, outputSizesB[DRONET_ID][17]+2);
+	L2_weights = (short int *) meta_alloc(MEM_ID_W12, L3_sizes[DRONET_ID][11]);
 
-	L3toL2(L3_weights[11], L2_weights, L3_sizes[11]);
+	L3toL2(L3_weights[DRONET_ID][11], L2_weights, L3_sizes[DRONET_ID][11]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[17] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	LinearLayer_SW_2(L2_input, L2_weights, Norm_Factor[11], L2_bias[11], NORM_BIAS_DENSE, L2_output[17], 0, 0);
+	LinearLayer_SW_2(L2_input, L2_weights, Norm_Factor[11], L2_bias[DRONET_ID][11], NORM_BIAS_DENSE, L2_output[17], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[17] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
 #if defined(DUMP_W) && (DUMP_W==17 || DUMP_W==18)
-	dumpW(17, L2_weights, DUMP_T);
+	dumpW(17, L2_weights, DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_B) && (DUMP_B==17 || DUMP_B==18)
-	dumpBias(17, L2_bias[11], DUMP_T);
+	dumpBias(17, L2_bias[DRONET_ID][11], DUMP_T, DRONET_ID);
 #endif
 
 #if defined(DUMP_O) && (DUMP_O==17 || DUMP_O==18)
-	dumpFMs(17, L2_output[17], 1, DUMP_T);
+	dumpFMs(17, L2_output[17], 1, DUMP_T, DRONET_ID);
 #endif
 
 #ifdef CHECKSUM
 	check_layer(L2_output[17], 17);
 #endif
 
-	meta_free(MEM_ID_W12, L3_sizes[11]);
+	meta_free(MEM_ID_W12, L3_sizes[DRONET_ID][11]);
 	SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1] = L2_output[17][0];
-	meta_free(MEM_ID_O18, outputSizesB[17]+2);
-	meta_free(MEM_ID_O15, outputSizesB[14]);
-	meta_free(MEM_ID_O10, outputSizesB[9]);
+	meta_free(MEM_ID_O18, outputSizesB[DRONET_ID][17]+2);
+	meta_free(MEM_ID_O15, outputSizesB[DRONET_ID][14]);
+	meta_free(MEM_ID_O10, outputSizesB[DRONET_ID][9]);
 
 
 /* -------------------------------------------------------------------------- */
@@ -1030,20 +1933,7 @@ __rt_cluster_push_fc_event(event_capture);
 
 }
 
-
-/*----------------.  .----------------.  .----------------.  .-----------------.
-| .--------------. || .--------------. || .--------------. || .--------------. |
-| | ____    ____ | || |      __      | || |     _____    | || | ____  _____  | |
-| ||_   \  /   _|| || |     /  \     | || |    |_   _|   | || ||_   \|_   _| | |
-| |  |   \/   |  | || |    / /\ \    | || |      | |     | || |  |   \ | |   | |
-| |  | |\  /| |  | || |   / ____ \   | || |      | |     | || |  | |\ \| |   | |
-| | _| |_\/_| |_ | || | _/ /    \ \_ | || |     _| |_    | || | _| |_\   |_  | |
-| ||_____||_____|| || ||____|  |____|| || |    |_____|   | || ||_____|\____| | |
-| |              | || |              | || |              | || |              | |
-| '--------------' || '--------------' || '--------------' || '--------------' |
- '----------------'  '----------------'  '----------------'  '----------------*/ 
-
-int main() {
+void generalSetup(){
 
 #ifdef SHOW_IMAGES
   printf("Connecting to bridge...\n");
@@ -1081,220 +1971,6 @@ int main() {
 /* -------------------------------------------------------------------------- */
 
 
-/* --------------------------------- LOAD L3 -------------------------------- */
-
-	/* ----------------- HyperRAM ----------------- */
-	rt_hyperram_conf_t hyperram_conf;
-	rt_hyperram_conf_init(&hyperram_conf);
-
-	hyperram_conf.id = 0;
-	hyperram_conf.ram_size = 8<<20;
-
-	hyperram = rt_hyperram_open(NULL, &hyperram_conf, NULL);
-	if(hyperram == NULL) {
-#ifdef VERBOSE
-		printf("Error Opening HyperRAM\n");
-#endif
-		return -1;
-	}
-
-	/* ---------------- HyperFlash ---------------- */
-	rt_fs_t *fs;
-	rt_file_t *file;
-	rt_fs_conf_t hyperflash_conf;
-	rt_error_conf(NULL, handle_async_error, NULL);
-	if(rt_event_alloc(NULL, 16)) return -1;
-	rt_fs_conf_init(&hyperflash_conf);
-
-	int flashBuffSize = FLASH_BUFF_SIZE * sizeof(short int);
-	void *flashBuffer = rt_alloc(RT_ALLOC_PERIPH, flashBuffSize);
-	if(flashBuffer == NULL) {
-#ifdef VERBOSE
-		printf("Error Allocating flashBuffSize\n");
-#endif
-		return -1;
-	}
-
-	short unsigned int *checksumBuff = rt_alloc(RT_ALLOC_L2_CL_DATA, flashBuffSize);
-	if(checksumBuff == NULL) {
-#ifdef VERBOSE
-		printf("Error Allocating checksumBuff\n"); 
-#endif
-		return -1;
-	}
-
-	hyperflash_conf.flash_conf.type = RT_FLASH_TYPE_HYPER;
-	hyperflash_conf.flash_conf.id = 0;
-
-	fs = rt_fs_mount(NULL, &hyperflash_conf, NULL);
-	if(fs == NULL) handle_error();
-
-	for(int i=0; i<NWEIGTHS; i++) {
-
-		/* --------------- Load Weights --------------- */
-		unsigned int checksumF = 0;
-		unsigned int checksumR = 0;
-
-		// Flash memory opening files for all the Layer's weights
-		file = rt_fs_open(fs, L3_weights_files[i], 0, NULL);
-		if(file == NULL) {
-#ifdef VERBOSE
-			printf("Error Opening file: %s\n", L3_weights_files[i]); 
-#endif
-			return -1;
-		}
-
-		L3_sizes[i] = file->size;
-
-		// L3 Memory allocation for all the Layer's weights (i.e.HyperRam)
-		L3_weights[i] = (short int *) rt_hyperram_alloc(hyperram, L3_sizes[i]);
-		
-		if(L3_weights[i] == NULL) {
-#ifdef VERBOSE
-			printf("Error Allocating L3: Layer %d\n", i+1); 
-#endif
-			return -1;
-		}
-
-		unsigned int rdDone = 0;
-		// loop on chunk in file
-		while(rdDone < (L3_sizes[i] / sizeof(short int))) { 
-
-			// read from HyperFlash
-			int size = rt_fs_read(file, flashBuffer, flashBuffSize, NULL);
-
-			// write to HyperRam
-			rt_hyperram_write(hyperram, flashBuffer, L3_weights[i]+rdDone, size, NULL);
-
-			// checksum 
-			rt_hyperram_read(hyperram, checksumBuff, L3_weights[i]+rdDone, size, NULL);
-
-			short unsigned int *ptr = (short unsigned int *) flashBuffer;
-			for(int j=0; j<(int)(size / sizeof(short unsigned int)); j++) {
-				checksumF += (unsigned int) ptr[j];
-				checksumR += (unsigned int) checksumBuff[j];
-			}
-
-			rdDone += size / sizeof(short int);
-		}
-
-		if(checksumF != L3_weights_GT[i] || checksumR != L3_weights_GT[i]) {
-#ifdef VERBOSE
-			printf("Error Checksum Weight %d: %u %u [%u]\n", i+1, checksumF, checksumR, L3_weights_GT[i]);
-#endif
-			return -1;
-		}
-
-		/* ---------------- Load Biases --------------- */
-		// flash Memory opening files for all the Layer's biases
-		file = rt_fs_open(fs, L3_bias_files[i], 0, NULL);
-		if(file == NULL) {
-#ifdef VERBOSE
-			printf("Error Opening file: %s\n", L3_bias_files[i]); 
-#endif
-			return -1;
-		}
-
-		L2_bias_sizes[i] = file->size;
-
-		if(L2_bias_sizes[i] > FLASH_BUFF_SIZE*sizeof(short int)) {
-#ifdef VERBOSE
-			printf("Error Bias size exceeding maximum: %d[B]\n", L2_bias_sizes[i]); 
-#endif
-			return -1;
-		}
-
-		L2_bias[i] = rt_alloc(RT_ALLOC_L2_CL_DATA, L2_bias_sizes[i]);
-
-		// read from HyperFlash (min 4 bytes)
-		rt_fs_read(file, L2_bias[i], L2_bias_sizes[i], NULL);
-
-		unsigned int checksumB = 0;
-		short unsigned int *ptr = (short unsigned int *) L2_bias[i];
-		for(unsigned int j=0; j<(L2_bias_sizes[i] / sizeof(short int)); j++){
-			checksumB += (unsigned int) ptr[j];
-		}
-
-		if(checksumB != L3_biases_GT[i]) {
-#ifdef VERBOSE
-			printf("Error Checksum Bias %d: %u [%u]\n", i+1, checksumB, L3_biases_GT[i]);
-#endif
-			return -1;
-		}
-	}
-
-	// free L2 temporary buffers
-	rt_free(RT_ALLOC_PERIPH, flashBuffer, flashBuffSize);
-	rt_free(RT_ALLOC_L2_CL_DATA, checksumBuff, flashBuffSize);
-
-	// close HyperFlash 
-	rt_fs_unmount(fs, NULL);
-
-#ifdef VERBOSE
-	printf("Load HFlash -> HRam:\t\t\tOk\n");
-#endif
-
-/* -------------------------------------------------------------------------- */
-
-
-/* --------------------------- MEMORY ALLOCATION ---------------------------- */
-
-	for(int i=0; i<NLAYERS; i++)
-		outputSizesB[i] = outCh[i] * outW[i] * outH[i] * sizeof(short int);
-
-	Norm_Factor[0] = Q_Factor[0]+NORM_INPUT-NORM_ACT;
-	Norm_Factor[1] = Q_Factor[1];
-	Norm_Factor[2] = Q_Factor[2];
-	Norm_Factor[3] = Q_Factor[3];
-	Norm_Factor[4] = Q_Factor[4];
-	Norm_Factor[5] = Q_Factor[5];
-	Norm_Factor[6] = Q_Factor[6];
-	Norm_Factor[7] = Q_Factor[7];
-	Norm_Factor[8] = Q_Factor[8];
-	Norm_Factor[9] = Q_Factor[9];
-	Norm_Factor[10] = Q_Factor[10];
-	Norm_Factor[11] = Q_Factor[11];
-
- 	for(int i=0; i<NUM_L2_BUFF; i+=2) {
- 		L2_base[i] = rt_alloc(RT_ALLOC_L2_CL_DATA, L2_buffers_size[i/2]);
- 		L2_next_free[i] = L2_base[i];
-		L2_next_free[i+1] = L2_base[i] + L2_buffers_size[0];
-
- #ifdef VERBOSE
- 		printf("L2 Buffer alloc\t%dB\t@ 0x%08x:\t%s\n", L2_buffers_size[i/2], (unsigned int)L2_base[i/2], L2_base[i/2]?"Ok":"Failed");
- #endif
- 		if(L2_base[i/2] == NULL) return -1;
- 	}
-	
-	//O5 has to be moved to L3 to save space in L2
-	L3_temp_O5 = (short int *) rt_hyperram_alloc(hyperram, outputSizesB[4]);
-	// allocate the memory of L2 for the image buffer
-	int image_size_bytes = MAX(MAX((CAM_CROP_W_DRONET/DS_RATIO_DRONET)*(CAM_CROP_H_DRONET/DS_RATIO_DRONET)*sizeof(short int), (CAM_CROP_W_FINDNET/DS_RATIO_FINDNET)*(CAM_CROP_H_FINDNET/DS_RATIO_FINDNET)*sizeof(char)),CAM_FULLRES_W*CAM_FULLRES_H*sizeof(unsigned char));
-	L2_image = rt_alloc(RT_ALLOC_L2_CL_DATA, image_size_bytes);
-#ifdef VERBOSE
-	printf("L2 Image alloc\t%dB\t@ 0x%08x:\t%s\n", image_size_bytes, (unsigned int) L2_image, L2_image?"Ok":"Failed");
-#endif
-	if(L2_image == NULL) return -1;
-
-	// power the cluster up. Must be powered-on before allocating L1
-	rt_cluster_mount(MOUNT, CID, 0, NULL);
-
-	// allocate some stacks for cluster in L1, rt_nb_pe returns how many cores exist
-	void *stacks = rt_alloc(RT_ALLOC_CL_DATA, STACK_SIZE*rt_nb_pe());
-#ifdef VERBOSE 
-	printf("L1 Stack alloc\t%dB\t@ 0x%08x:\t%s\n", STACK_SIZE*rt_nb_pe(), (unsigned int) stacks, stacks?"Ok":"Failed");
-#endif
-	if(stacks == NULL) return -1;
-	
-	PULP_Dronet_L1_Memory = rt_alloc(RT_ALLOC_CL_DATA, _PULP_Dronet_L1_Memory_SIZE);
-#ifdef VERBOSE
-	printf("L1 Buffer alloc\t%dB\t@ 0xYes%08x:\t%s\n", _PULP_Dronet_L1_Memory_SIZE, (unsigned int) PULP_Dronet_L1_Memory, PULP_Dronet_L1_Memory?"Ok":"Failed");
- #endif
-	if(PULP_Dronet_L1_Memory == NULL) return -1;
-
-/* -------------------------------------------------------------------------- */
-
-
 /* --------------------------- SPIM CONFIGURATION --------------------------- */
 
 #ifdef SPI_COMM
@@ -1308,7 +1984,7 @@ int main() {
 	spim_conf.wordsize = RT_SPIM_WORDSIZE_8;
 
 	// open the device
-	rt_spim_t *spim = rt_spim_open(NULL, &spim_conf, NULL);
+	spim = rt_spim_open(NULL, &spim_conf, NULL);
 #ifdef VERBOSE
 	printf("SPI Master opening:\t\t\t%s\n", spim?"Ok":"Failed");
 #endif
@@ -1380,6 +2056,245 @@ int main() {
 /* -------------------------------------------------------------------------- */
 
 
+}
+
+/*----------------.  .----------------.  .----------------.  .-----------------.
+| .--------------. || .--------------. || .--------------. || .--------------. |
+| | ____    ____ | || |      __      | || |     _____    | || | ____  _____  | |
+| ||_   \  /   _|| || |     /  \     | || |    |_   _|   | || ||_   \|_   _| | |
+| |  |   \/   |  | || |    / /\ \    | || |      | |     | || |  |   \ | |   | |
+| |  | |\  /| |  | || |   / ____ \   | || |      | |     | || |  | |\ \| |   | |
+| | _| |_\/_| |_ | || | _/ /    \ \_ | || |     _| |_    | || | _| |_\   |_  | |
+| ||_____||_____|| || ||____|  |____|| || |    |_____|   | || ||_____|\____| | |
+| |              | || |              | || |              | || |              | |
+| '--------------' || '--------------' || '--------------' || '--------------' |
+ '----------------'  '----------------'  '----------------'  '----------------*/ 
+
+int main() {
+
+	generalSetup();
+
+/* --------------------------------- LOAD L3 -------------------------------- */
+
+	/* ----------------- HyperRAM ----------------- */
+	rt_hyperram_conf_t hyperram_conf;
+	rt_hyperram_conf_init(&hyperram_conf);
+
+	hyperram_conf.id = 0;
+	hyperram_conf.ram_size = 8<<20;
+
+	hyperram = rt_hyperram_open(NULL, &hyperram_conf, NULL);
+	if(hyperram == NULL) {
+#ifdef VERBOSE
+		printf("Error Opening HyperRAM\n");
+#endif
+		return -1;
+	}
+
+	/* ---------------- HyperFlash ---------------- */
+	rt_fs_t *fs;
+	rt_file_t *file;
+	rt_fs_conf_t hyperflash_conf;
+	rt_error_conf(NULL, handle_async_error, NULL);
+	if(rt_event_alloc(NULL, 16)) return -1;
+	rt_fs_conf_init(&hyperflash_conf);
+
+	int flashBuffSize = FLASH_BUFF_SIZE * sizeof(short int);
+	void *flashBuffer = rt_alloc(RT_ALLOC_PERIPH, flashBuffSize);
+	if(flashBuffer == NULL) {
+#ifdef VERBOSE
+		printf("Error Allocating flashBuffSize\n");
+#endif
+		return -1;
+	}
+
+	short unsigned int *checksumBuff = rt_alloc(RT_ALLOC_L2_CL_DATA, flashBuffSize);
+	if(checksumBuff == NULL) {
+#ifdef VERBOSE
+		printf("Error Allocating checksumBuff\n"); 
+#endif
+		return -1;
+	}
+
+	hyperflash_conf.flash_conf.type = RT_FLASH_TYPE_HYPER;
+	hyperflash_conf.flash_conf.id = 0;
+
+	fs = rt_fs_mount(NULL, &hyperflash_conf, NULL);
+	if(fs == NULL) handle_error();
+	for(int netId=0; netId<NNETS; netId++) {
+		for(int i=0; i<nweights_exact[netId]; i++) {
+
+			/* --------------- Load Weights --------------- */
+			unsigned int checksumF = 0;
+			unsigned int checksumR = 0;
+
+			// Flash memory opening files for all the Layer's weights
+			file = rt_fs_open(fs, L3_weights_files[netId][i], 0, NULL);
+			if(file == NULL) {
+	#ifdef VERBOSE
+				printf("%d %d\n", netId, i);
+				printf("Error Opening file: %s\n", L3_weights_files[netId][i]); 
+	#endif
+				return -1;
+			}
+
+			L3_sizes[netId][i] = file->size;
+
+			// L3 Memory allocation for all the Layer's weights (i.e.HyperRam)
+			//HACK TODO FIXME!!! L3 allocation bug in gap-sdk
+			
+		 	L3_weights[netId][i] = (short int *) rt_hyperram_alloc(hyperram, L3_sizes[netId][i]/8);
+			//printf("L3_sizes %s Net: %d Layer %d : %d\n", L3_weights_files[netId][i], netId, i+1, L3_sizes[netId][i]);
+			if(L3_weights[netId][i] == NULL) {
+	#ifdef VERBOSE
+				printf("Error Allocating L3: Net: %d Layer %d\n", netId, i+1); 
+	#endif
+				return -1;
+			}
+
+			unsigned int rdDone = 0;
+			// loop on chunk in file
+			while(rdDone < (L3_sizes[netId][i] / sizeof(short int))) { 
+
+				// read from HyperFlash
+				int size = rt_fs_read(file, flashBuffer, flashBuffSize, NULL);
+
+				// write to HyperRam
+				rt_hyperram_write(hyperram, flashBuffer, L3_weights[netId][i]+rdDone, size, NULL);
+
+				// checksum 
+				rt_hyperram_read(hyperram, checksumBuff, L3_weights[netId][i]+rdDone, size, NULL);
+
+				short unsigned int *ptr = (short unsigned int *) flashBuffer;
+				for(int j=0; j<(int)(size / sizeof(short unsigned int)); j++) {
+					checksumF += (unsigned int) ptr[j];
+					checksumR += (unsigned int) checksumBuff[j];
+				}
+
+				rdDone += size / sizeof(short int);
+			}
+
+			if(checksumF != L3_weights_GT[netId][i] || checksumR != L3_weights_GT[netId][i]) {
+	#ifdef VERBOSE
+				printf("Error Checksum Weight %d: %u %u [%u]\n", i+1, checksumF, checksumR, L3_weights_GT[netId][i]);
+	#endif
+				return -1;
+			}
+
+			/* ---------------- Load Biases --------------- */
+			// flash Memory opening files for all the Layer's biases
+			file = rt_fs_open(fs, L3_bias_files[netId][i], 0, NULL);
+			if(file == NULL) {
+	#ifdef VERBOSE
+				printf("%d %d\n", netId, i);
+				printf("Error Opening file: %s\n", L3_bias_files[netId][i]); 
+	#endif
+				return -1;
+			}
+
+			L2_bias_sizes[netId][i] = file->size;
+
+			if(L2_bias_sizes[netId][i] > FLASH_BUFF_SIZE*sizeof(short int)) {
+	#ifdef VERBOSE
+				printf("Error Bias size exceeding maximum: %d[B]\n", L2_bias_sizes[netId][i]); 
+	#endif
+				return -1;
+			}
+
+			L2_bias[netId][i] = rt_alloc(RT_ALLOC_L2_CL_DATA, L2_bias_sizes[netId][i]);
+
+			// read from HyperFlash (min 4 bytes)
+			rt_fs_read(file, L2_bias[netId][i], L2_bias_sizes[netId][i], NULL);
+
+			unsigned int checksumB = 0;
+			short unsigned int *ptr = (short unsigned int *) L2_bias[netId][i];
+			for(unsigned int j=0; j<(L2_bias_sizes[netId][i] / sizeof(short int)); j++){
+				checksumB += (unsigned int) ptr[j];
+			}
+
+			if(checksumB != L3_biases_GT[netId][i]) {
+	#ifdef VERBOSE
+				printf("Error Checksum Bias %d: %u [%u]\n", i+1, checksumB, L3_biases_GT[netId][i]);
+	#endif
+				return -1;
+			}
+		}
+	}
+	// free L2 temporary buffers
+	rt_free(RT_ALLOC_PERIPH, flashBuffer, flashBuffSize);
+	rt_free(RT_ALLOC_L2_CL_DATA, checksumBuff, flashBuffSize);
+
+	// close HyperFlash 
+	rt_fs_unmount(fs, NULL);
+
+#ifdef VERBOSE
+	printf("Load HFlash -> HRam:\t\t\tOk\n");
+#endif
+
+/* -------------------------------------------------------------------------- */
+
+
+/* --------------------------- MEMORY ALLOCATION ---------------------------- */
+
+	for(int netId=0; netId<NNETS; netId++){ 
+		for(int i=0; i<NLAYERS; i++)
+			outputSizesB[netId][i] = outCh[netId][i] * outW[netId][i] * outH[netId][i] * sizeof(short int);
+	}
+	Norm_Factor[0] = Q_Factor[0]+NORM_INPUT-NORM_ACT;
+	Norm_Factor[1] = Q_Factor[1];
+	Norm_Factor[2] = Q_Factor[2];
+	Norm_Factor[3] = Q_Factor[3];
+	Norm_Factor[4] = Q_Factor[4];
+	Norm_Factor[5] = Q_Factor[5];
+	Norm_Factor[6] = Q_Factor[6];
+	Norm_Factor[7] = Q_Factor[7];
+	Norm_Factor[8] = Q_Factor[8];
+	Norm_Factor[9] = Q_Factor[9];
+	Norm_Factor[10] = Q_Factor[10];
+	Norm_Factor[11] = Q_Factor[11];
+
+ 	for(int i=0; i<NUM_L2_BUFF; i+=2) {
+ 		L2_base[i] = rt_alloc(RT_ALLOC_L2_CL_DATA, L2_buffers_size[i/2]);
+ 		L2_next_free[i] = L2_base[i];
+		L2_next_free[i+1] = L2_base[i] + L2_buffers_size[0];
+
+ #ifdef VERBOSE
+ 		printf("L2 Buffer alloc\t%dB\t@ 0x%08x:\t%s\n", L2_buffers_size[i/2], (unsigned int)L2_base[i/2], L2_base[i/2]?"Ok":"Failed");
+ #endif
+ 		if(L2_base[i/2] == NULL) return -1;
+ 	}
+	
+	//O5 has to be moved to L3 to save space in L2
+	L3_temp_O5 = (short int *) rt_hyperram_alloc(hyperram, outputSizesB[4]);
+	// allocate the memory of L2 for the image buffer
+	int image_size_bytes = MAX(MAX((CAM_CROP_W_DRONET/DS_RATIO_DRONET)*(CAM_CROP_H_DRONET/DS_RATIO_DRONET)*sizeof(short int), (CAM_CROP_W_FINDNET/DS_RATIO_FINDNET)*(CAM_CROP_H_FINDNET/DS_RATIO_FINDNET)*sizeof(char)),CAM_FULLRES_W*CAM_FULLRES_H*sizeof(unsigned char));
+	L2_image = rt_alloc(RT_ALLOC_L2_CL_DATA, image_size_bytes);
+#ifdef VERBOSE
+	printf("L2 Image alloc\t%dB\t@ 0x%08x:\t%s\n", image_size_bytes, (unsigned int) L2_image, L2_image?"Ok":"Failed");
+#endif
+	if(L2_image == NULL) return -1;
+
+	// power the cluster up. Must be powered-on before allocating L1
+	rt_cluster_mount(MOUNT, CID, 0, NULL);
+
+	// allocate some stacks for cluster in L1, rt_nb_pe returns how many cores exist
+	void *stacks = rt_alloc(RT_ALLOC_CL_DATA, STACK_SIZE*rt_nb_pe());
+#ifdef VERBOSE 
+	printf("L1 Stack alloc\t%dB\t@ 0x%08x:\t%s\n", STACK_SIZE*rt_nb_pe(), (unsigned int) stacks, stacks?"Ok":"Failed");
+#endif
+	if(stacks == NULL) return -1;
+	
+	PULP_Dronet_L1_Memory = rt_alloc(RT_ALLOC_CL_DATA, _PULP_Dronet_L1_Memory_SIZE);
+#ifdef VERBOSE
+	printf("L1 Buffer alloc\t%dB\t@ 0xYes%08x:\t%s\n", _PULP_Dronet_L1_Memory_SIZE, (unsigned int) PULP_Dronet_L1_Memory, PULP_Dronet_L1_Memory?"Ok":"Failed");
+ #endif
+	if(PULP_Dronet_L1_Memory == NULL) return -1;
+
+/* -------------------------------------------------------------------------- */
+
+
+
+
 /* ------------------------- CAMERA 1st ACQUISITION ------------------------- */
 
 	// grab the first frame in advance, because this requires some extra time
@@ -1444,7 +2359,7 @@ int main() {
 		dronet = 0;
 		event_capture = rt_event_get(NULL, enqueue_capture, NULL);
 
-		rt_cluster_call(NULL, CID, (void *) RunPULPDronet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
+		rt_cluster_call(NULL, CID, (void *) RunPULPFrontnet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
 		//rt_event_wait(event_cluster);
 
 #ifdef SPI_COMM
@@ -1490,9 +2405,11 @@ int main() {
 		rt_free(RT_ALLOC_L2_CL_DATA, L2_base[i], L2_buffers_size[i]);
 
 	// free HyperRam
-	for(int i=0; i<NWEIGTHS; i++) {
-		rt_hyperram_free(hyperram, L3_weights[i], L3_sizes[i]);
-		rt_free(RT_ALLOC_L2_CL_DATA, L2_bias[i], L2_bias_sizes[i]);
+	for(int netId=0; netId<NNETS; netId++) {
+		for(int i=0; i<nweights_exact[netId]; i++) {
+			rt_hyperram_free(hyperram, L3_weights[netId][i], L3_sizes[netId][i]);
+			rt_free(RT_ALLOC_L2_CL_DATA, L2_bias[netId][i], L2_bias_sizes[netId][i]);
+		}
 	}
 
 	// close HyperRam

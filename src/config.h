@@ -26,7 +26,7 @@
 
 /****************************** USER PARAMETERS *******************************/
 // #define DATASET_TEST				// Enable if you test the Dataset (single iteration)
-// #define VERBOSE					// Enables additional information
+ #define VERBOSE					// Enables additional information
 // #define VERBOSE_META_ALLOC		
 // #define PRINT_IMAGES
 // #define CHECKSUM					// Enables correctness check per layer
@@ -108,8 +108,10 @@
 #define UNMOUNT			0			// Cluster unmount command
 #define CID				0			// Cluster ID
 #define FLASH_BUFF_SIZE	128 		// Safe to keep this <= 256 Bytes
-#define NLAYERS			18			// Overall number of layers (ReLu, Add, Conv, Dense)
-#define NWEIGTHS		12			// Number of Conv Weights
+#define NNETS 			2			// Number of nets based on DroNet structure
+#define NLAYERS			20			// Overall number of layers (ReLu, Add, Conv, Dense)
+#define NWEIGTHS		14			// Number of Conv Weights
+const int nweights_exact[NNETS] = {12,14};
 #define SPIM_BUFFER		PULP_MSG_LENGTH// SPI master buffer size [Bytes]
 #define NORM_BIAS_DENSE	NORM_ACT	// Normalization Factor for the Biases of dense layers
 #define NUM_L2_BUFF		2			// Number of L2 buffers, should be even as there are are always 2 stacks growing towards each other
@@ -180,8 +182,12 @@
 #undef PROFILE_FC
 #endif
 
+// DRONET and FRONTNET!!! Always [Dronet,Frontet]
+#define DRONET_ID		0
+#define FRONTNET_ID		1
+
 // LUT mapping conv layer among all layers, IN[0-17] OUT[0-11], -1 error
-const int			LAYERS_MAPPING_LUT[] = {
+const int			LAYERS_MAPPING_LUT[NNETS][NLAYERS] = {{
 	0,							// 0	5x5ConvMax_1			
 	-1,							// 1	ReLU_1				
 	1,							// 2	3x3ConvReLU_2		
@@ -200,7 +206,29 @@ const int			LAYERS_MAPPING_LUT[] = {
 	-1,							// 15	AddReLU_3			
 	10,							// 16	Dense_1				
 	11							// 17	Dense_2	
- };
+ },
+ {
+ 	0,								// 0	5x5ConvMax_1			
+	-1,								// 1	ReLU_1				
+	1,								// 2	3x3ConvReLU_2		
+	2,								// 3	3x3Conv_3			
+	3,								// 4	1x1Conv_4			
+	-1,								// 5	Add_1				
+	-1,								// 6	ReLU_2				
+	4,								// 7	3x3ConvReLU_5		
+	5,								// 8	3x3Conv_6			
+	6,								// 9	1x1Conv_7			
+	-1,								// 10	Add_2 				
+	-1,								// 11	ReLU_3				
+	7,								// 12	3x3ConvReLU_8		
+	8,								// 13	3x3Conv_9			
+	9,								// 14	1x1Conv_10			
+	-1,								// 15	AddReLU_3			
+	10,								// 16	Dense_1				
+	11,								// 17	Dense_2				
+	12,								// 18	Dense_3				
+	13								// 19	Dense_4	
+ }};
 
 /******************************************************************************/
 
@@ -208,7 +236,7 @@ const int			LAYERS_MAPPING_LUT[] = {
 const int			L2_buffers_size[NUM_L2_BUFF/2] = {341632};
 
 /* --------------------------- Input Channel Sizes -------------------------- */
-const int			inCh[] = {
+const int			inCh[NNETS][NLAYERS] = {{
 	1,							// 0	5x5ConvMax_1
 	32,							// 1	ReLU_1
 	32,							// 2	3x3ConvReLU_2
@@ -227,10 +255,33 @@ const int			inCh[] = {
 	128,						// 15	AddReLU_3
 	128,						// 16	Dense_1
 	128							// 17	Dense_2
+},
+{
+	1,								// 0	5x5ConvMax_1
+	32,								// 1	ReLU_1
+	32,								// 2	3x3ConvReLU_2
+	32,								// 3	3x3Conv_3
+	32,								// 4	1x1Conv_4
+	32,								// 5	Add_1
+	32,								// 6	ReLU_2
+	32,								// 7	3x3ConvReLU_5
+	64,								// 8	3x3Conv_6
+	32,								// 9	1x1Conv_7
+	64,								// 10	Add_2
+	64,								// 11	ReLU_3
+	64,								// 12	3x3ConvReLU_8
+	128,							// 13	3x3Conv_9
+	64,								// 14	1x1Conv_10
+	128,							// 15	AddReLU_3
+	128,							// 16	Dense_1
+	128,							// 17	Dense_2
+	128,							// 18	Dense_3
+	128								// 19	Dense_4
+}
 };
 
 /* ------------------------- Input Feature Map Width ------------------------ */
-const int			inW[] = {
+const int			inW[NNETS][NLAYERS] = {{
 	200,						// 0	5x5ConvMax_1
 	50,							// 1	ReLU_1
 	50,							// 2	3x3ConvReLU_2
@@ -249,10 +300,33 @@ const int			inW[] = {
 	7,							// 15	AddReLU_3
 	7,							// 16	Dense_1
 	7							// 17	Dense_2
+},
+{
+	108,							// 0	5x5ConvMax_1
+	27,								// 1	ReLU_1
+	27,								// 2	3x3ConvReLU_2
+	14,								// 3	3x3Conv_3
+	27,								// 4	1x1Conv_4
+	14,								// 5	Add_1
+	14,								// 6	ReLU_2
+	14,								// 7	3x3ConvReLU_5
+	7,								// 8	3x3Conv_6
+	14,								// 9	1x1Conv_7
+	7,								// 10	Add_2
+	7,								// 11	ReLU_3
+	7,								// 12	3x3ConvReLU_8
+	4,								// 13	3x3Conv_9
+	7,								// 14	1x1Conv_10
+	4,								// 15	AddReLU_3
+	4,								// 16	Dense_1
+	4,								// 17	Dense_2
+	4,								// 18	Dense_3
+	4								// 19	Dense_4
+}
 };
 
 /* ------------------------ Input Feature Map Height ------------------------ */
-const int			inH[] = {
+const int			inH[NNETS][NLAYERS] = {{
 	200,						// 0	5x5ConvMax_1
 	50,							// 1	ReLU_1
 	50,							// 2	3x3ConvReLU_2
@@ -271,10 +345,33 @@ const int			inH[] = {
 	7,							// 15	AddReLU_3
 	7,							// 16	Dense_1
 	7							// 17	Dense_2
+},
+{
+	60,								// 0	5x5ConvMax_1
+	15,								// 1	ReLU_1
+	15,								// 2	3x3ConvReLU_2
+	8,								// 3	3x3Conv_3
+	15,								// 4	1x1Conv_4
+	8,								// 5	Add_1
+	8,								// 6	ReLU_2
+	8,								// 7	3x3ConvReLU_5
+	4,								// 8	3x3Conv_6
+	8,								// 9	1x1Conv_7
+	4,								// 10	Add_2
+	4,								// 11	ReLU_3
+	4,								// 12	3x3ConvReLU_8
+	2,								// 13	3x3Conv_9
+	4,								// 14	1x1Conv_10
+	2,								// 15	AddReLU_3
+	2,								// 16	Dense_1
+	2,								// 17	Dense_2
+	2,								// 18	Dense_3
+	2								// 19	Dense_4
+}
 };
 
 /* ------------------------ Conv Layers Filter Width ------------------------ */
-const int			kerW[] = {
+const int			kerW[NNETS][NLAYERS] = {{
 	5,							// 0	5x5ConvMax_1
 	3,							// 2	3x3ConvReLU_2
 	3,							// 3	3x3Conv_3
@@ -287,10 +384,27 @@ const int			kerW[] = {
 	1,							// 14	1x1Conv_10
 	7,							// 16	Dense_1
 	7							// 17	Dense_2
+},
+{
+	5,								// 0	5x5ConvMax_1
+	3,								// 2	3x3ConvReLU_2
+	3,								// 3	3x3Conv_3
+	1,								// 4	1x1Conv_4
+	3,								// 7	3x3ConvReLU_5
+	3,								// 8	3x3Conv_6
+	1,								// 9	1x1Conv_7
+	3,								// 12	3x3ConvReLU_8
+	3,								// 13	3x3Conv_9
+	1,								// 14	1x1Conv_10
+	4,								// 16	Dense_1
+	4,								// 17	Dense_2
+	4,								// 18	Dense_3
+	4								// 19	Dense_4
+}
 };
 
 /* ----------------------- Conv Layers Filter Height ----------------------- */
-const int			kerH[] = {
+const int			kerH[NNETS][NLAYERS] = {{
 	5,							// 0	5x5ConvMax_1
 	3,							// 2	3x3ConvReLU_2
 	3,							// 3	3x3Conv_3
@@ -303,11 +417,28 @@ const int			kerH[] = {
 	1,							// 14	1x1Conv_10
 	7,							// 16	Dense_1
 	7							// 17	Dense_2
+},
+{
+	5,								// 0	5x5ConvMax_1
+	3,								// 2	3x3ConvReLU_2
+	3,								// 3	3x3Conv_3
+	1,								// 4	1x1Conv_4
+	3,								// 7	3x3ConvReLU_5
+	3,								// 8	3x3Conv_6
+	1,								// 9	1x1Conv_7
+	3,								// 12	3x3ConvReLU_8
+	3,								// 13	3x3Conv_9
+	1,								// 14	1x1Conv_10
+	2,								// 16	Dense_1
+	2,								// 17	Dense_2
+	2,								// 18	Dense_3
+	2								// 19	Dense_4
+}
 };
 
 
 /* -------------------------- Output Channel Sizes -------------------------- */
-const int			outCh[] = {
+const int			outCh[NNETS][NLAYERS] = {{
 	32,							// 0	5x5ConvMax_1
 	32,							// 1	ReLU_1
 	32,							// 2	3x3ConvReLU_2
@@ -326,10 +457,33 @@ const int			outCh[] = {
 	128,						// 15	AddReLU_3
 	1,							// 16	Dense_1
 	1							// 17	Dense_2
+},
+{
+	32,								// 0	5x5ConvMax_1
+	32,								// 1	ReLU_1
+	32,								// 2	3x3ConvReLU_2
+	32,								// 3	3x3Conv_3
+	32,								// 4	1x1Conv_4
+	32,								// 5	Add_1
+	32,								// 6	ReLU_2
+	64,								// 7	3x3ConvReLU_5
+	64,								// 8	3x3Conv_6
+	64,								// 9	1x1Conv_7
+	64,								// 10	Add_2
+	64,								// 11	ReLU_3
+	128,							// 12	3x3ConvReLU_8
+	128,							// 13	3x3Conv_9
+	128,							// 14	1x1Conv_10
+	128,							// 15	AddReLU_3
+	1,								// 16	Dense_1
+	1,								// 17	Dense_2
+	1,								// 18	Dense_3
+	1								// 19	Dense_4
+}
 };
 
 /* ------------------------ Output Feature Map Width ------------------------ */
-const int			outW[] = {
+const int			outW[NNETS][NLAYERS] = {{
 	50,							// 0	5x5ConvMax_1
 	50,							// 1	ReLU_1
 	25,							// 2	3x3ConvReLU_2
@@ -348,10 +502,33 @@ const int			outW[] = {
 	7,							// 15	AddReLU_3
 	1,							// 16	Dense_1
 	1							// 17	Dense_2
+},
+{
+	27,								// 0	5x5ConvMax_1
+	27,								// 1	ReLU_1
+	14,								// 2	3x3ConvReLU_2
+	14,								// 3	3x3Conv_3
+	14,								// 4	1x1Conv_4
+	14,								// 5	Add_1
+	14,								// 6	ReLU_2
+	7,								// 7	3x3ConvReLU_5
+	7,								// 8	3x3Conv_6
+	7,								// 9	1x1Conv_7
+	7,								// 10	Add_2
+	7,								// 11	ReLU_3
+	4,								// 12	3x3ConvReLU_8
+	4,								// 13	3x3Conv_9
+	4,								// 14	1x1Conv_10
+	4,								// 15	AddReLU_3
+	1,								// 16	Dense_1
+	1,								// 17	Dense_2
+	1,								// 18	Dense_3
+	1								// 19	Dense_4
+}
 };
 
 /* ------------------------ Output Feature Map Width ------------------------ */
-const int			outH[] = {
+const int			outH[NNETS][NLAYERS] = {{
 	50,							// 0	5x5ConvMax_1
 	50,							// 1	ReLU_1
 	25,							// 2	3x3ConvReLU_2
@@ -370,10 +547,33 @@ const int			outH[] = {
 	7,							// 15	AddReLU_3
 	1,							// 16	Dense_1
 	1							// 17	Dense_2
+},
+{
+	15,								// 0	5x5ConvMax_1
+	15,								// 1	ReLU_1
+	8,								// 2	3x3ConvReLU_2
+	8,								// 3	3x3Conv_3
+	8,								// 4	1x1Conv_4
+	8,								// 5	Add_1
+	8,								// 6	ReLU_2
+	4,								// 7	3x3ConvReLU_5
+	4,								// 8	3x3Conv_6
+	4,								// 9	1x1Conv_7
+	4,								// 10	Add_2
+	4,								// 11	ReLU_3
+	2,								// 12	3x3ConvReLU_8
+	2,								// 13	3x3Conv_9
+	2,								// 14	1x1Conv_10
+	2,								// 15	AddReLU_3
+	1,								// 16	Dense_1
+	1,								// 17	Dense_2
+	1,								// 18	Dense_3
+	1								// 19	Dense_4
+}
 };
 
 /* ------------------------- L3 Weights File Names -------------------------- */
-const char *		L3_weights_files[] = {
+const char *		L3_weights_files[NNETS][NWEIGTHS] = {{
 	"weights_conv2d_1.hex",		// 0	5x5ConvMax_1	1600	Bytes
 	"weights_conv2d_2.hex",		// 2	3x3ConvReLU_2	18432	Bytes
 	"weights_conv2d_3.hex",		// 3	3x3Conv_3		18432	Bytes
@@ -386,10 +586,27 @@ const char *		L3_weights_files[] = {
 	"weights_conv2d_10.hex",	// 14	1x1Conv_10		16384	Bytes
 	"weights_dense_1.hex",		// 16	Dense_1			12544	Bytes
 	"weights_dense_2.hex"		// 17	Dense_2			12544	Bytes
+},
+{
+	"weights_conv.hex",				// 0	5x5ConvMax_1	1600	Bytes
+	"weights_layer1_conv1.hex",		// 2	3x3ConvReLU_2	18432	Bytes
+	"weights_layer1_conv2.hex",		// 3	3x3Conv_3		18432	Bytes
+	"weights_layer1_shortcut.hex",	// 4	1x1Conv_4		2048	Bytes
+	"weights_layer2_conv1.hex",		// 7	3x3ConvReLU_5	36864	Bytes
+	"weights_layer2_conv2.hex",		// 8	3x3Conv_6		73728	Bytes
+	"weights_layer2_shortcut.hex",	// 9	1x1Conv_7		4096	Bytes
+	"weights_layer3_conv1.hex",		// 12	3x3ConvReLU_8	147456	Bytes
+	"weights_layer3_conv2.hex",		// 13	3x3Conv_9		294912	Bytes
+	"weights_layer3_shortcut.hex",	// 14	1x1Conv_10		16384	Bytes
+	"weights_fc_x.hex",				// 16	Dense_1			2048	Bytes
+	"weights_fc_y.hex",				// 17	Dense_2			2048	Bytes
+	"weights_fc_z.hex",				// 18	Dense_3			2048	Bytes
+	"weights_fc_phi.hex"			// 19	Dense_4			2048	Bytes
+}
 };
 
 /* -------------------------- L3 Biases File Names -------------------------- */
-const char *		L3_bias_files[] = {
+const char *		L3_bias_files[NNETS][NWEIGTHS] = {{
 	"bias_conv2d_1.hex",		// 0	5x5ConvMax_1	64		Bytes
 	"bias_conv2d_2.hex",		// 2	3x3ConvReLU_2	64		Bytes
 	"bias_conv2d_3.hex",		// 3	3x3Conv_3		64		Bytes
@@ -402,10 +619,27 @@ const char *		L3_bias_files[] = {
 	"bias_conv2d_10.hex",		// 14	1x1Conv_10		256		Bytes
 	"bias_dense_1.hex",			// 16	Dense_1			2		Bytes
 	"bias_dense_2.hex"			// 17	Dense_2			2		Bytes
+},
+{
+	"bias_conv.hex",				// 0	5x5ConvMax_1	64		Bytes
+	"bias_layer1_conv1.hex",		// 2	3x3ConvReLU_2	64		Bytes
+	"bias_layer1_conv2.hex",		// 3	3x3Conv_3		64		Bytes
+	"bias_layer1_shortcut.hex",		// 4	1x1Conv_4		64		Bytes
+	"bias_layer2_conv1.hex",		// 7	3x3ConvReLU_5	128		Bytes
+	"bias_layer2_conv2.hex",		// 8	3x3Conv_6		128		Bytes
+	"bias_layer2_shortcut.hex",		// 9	1x1Conv_7		128		Bytes
+	"bias_layer3_conv1.hex",		// 12	3x3ConvReLU_8	256		Bytes
+	"bias_layer3_conv2.hex",		// 13	3x3Conv_9		256		Bytes
+	"bias_layer3_shortcut.hex",		// 14	1x1Conv_10		256		Bytes
+	"bias_fc_x.hex",				// 16	Dense_1			2		Bytes
+	"bias_fc_y.hex",				// 17	Dense_2			2		Bytes
+	"bias_fc_z.hex",				// 18	Dense_3			2		Bytes
+	"bias_fc_phi.hex"				// 19	Dense_4			2		Bytes
+}
 };
 
 /* ----------------------- Weights Ground Truth (GT) ------------------------ */
-const unsigned int	L3_weights_GT[NWEIGTHS] = {
+const unsigned int	L3_weights_GT[NNETS][NWEIGTHS] = {{
 	25985189,					// 0	5x5ConvMax_1
 	171247369,					// 2	3x3ConvReLU_2
 	215325794,					// 3	3x3Conv_3
@@ -418,10 +652,27 @@ const unsigned int	L3_weights_GT[NWEIGTHS] = {
 	281798119,					// 14	1x1Conv_10
 	204663510,					// 16	Dense_1
 	244332381					// 17	Dense_2
+},
+{
+	27270384,						// 0	5x5ConvMax_1
+	317311429,						// 2	3x3ConvReLU_2
+	311091664,						// 3	3x3Conv_3
+	36580896,						// 4	1x1Conv_4
+	636538343,						// 7	3x3ConvReLU_5
+	1224571106,						// 8	3x3Conv_6
+	62730065,						// 9	1x1Conv_7
+	2488023927,						// 12	3x3ConvReLU_8
+	2503256820,						// 13	3x3Conv_9
+	217070237,						// 14	1x1Conv_10
+	34530659,						// 16	Dense_1
+	32618647,						// 17	Dense_2
+	32529124,						// 18	Dense_3
+	34098266						// 19	Dense_4
+}
 };
 
 /* ------------------------ Biases Ground Truth (GT) ------------------------ */
-const unsigned int	L3_biases_GT[NWEIGTHS] = {
+const unsigned int	L3_biases_GT[NNETS][NWEIGTHS] = {{
 	1484287,					// 0	5x5ConvMax_1
 	1364354,					// 2	3x3ConvReLU_2
 	1369951,					// 3	3x3Conv_3
@@ -434,6 +685,23 @@ const unsigned int	L3_biases_GT[NWEIGTHS] = {
 	7469135,					// 14	1x1Conv_10
 	0,							// 16	Dense_1
 	944							// 17	Dense_2
+},
+{
+	1504237,						// 0	5x5ConvMax_1
+	670448,							// 2	3x3ConvReLU_2
+	595272,							// 3	3x3Conv_3
+	859099,							// 4	1x1Conv_4
+	1010829,						// 7	3x3ConvReLU_5
+	2945358,						// 8	3x3Conv_6
+	2410798,						// 9	1x1Conv_7
+	5164349,						// 12	3x3ConvReLU_8
+	0,								// 13	3x3Conv_9
+	2947548,						// 14	1x1Conv_10
+	2985,							// 16	Dense_1
+	11,								// 17	Dense_2
+	2,								// 18	Dense_3
+	14,								// 19	Dense_4
+}
 };
 
 /* --------------------- Quantization Factor per layer ---------------------- */
