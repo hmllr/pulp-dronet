@@ -143,7 +143,101 @@ extern void LinearLayer_SW_2(
 		Word16 * __restrict__ Out,
 		int OutSize,
 		Kernel_T *Ker);
-extern void LinearLayer_SW_3(
+extern void FN_LargeParConv_5x5_S2_Max2x2_S2_H_1(
+		short int * __restrict__ In,
+		short int * __restrict__ Filter,
+		short int * __restrict__ Out,
+		unsigned int Norm,
+		short int * __restrict__ Bias,
+		Kernel_T *Ker);
+extern void FN_ReLU_SW_1(
+		short int * __restrict__ In,
+		short int * __restrict__ Out,
+		Kernel_T *Ker);
+extern void FN_MedParConv_3x3_S2_ReLU_2(
+		short int * __restrict__ In,
+		short int * __restrict__ Filter,
+		short int * __restrict__ Out,
+		unsigned int Norm,
+		short int * __restrict__ Bias,
+		Kernel_T *Ker);
+extern void FN_MedParConv_3x3_S1_3(
+		short int * __restrict__ In,
+		short int * __restrict__ Filter,
+		short int * __restrict__ Out,
+		unsigned int Norm,
+		short int * __restrict__ Bias,
+		Kernel_T *Ker);
+extern void FN_MedParConv_1x1_S2_4(
+		short int * __restrict__ In,
+		short int * __restrict__ Filter,
+		short int * __restrict__ Out,
+		unsigned int Norm,
+		short int * __restrict__ Bias,
+		Kernel_T *Ker);
+extern void FN_AddFeatureMaps_SW_1(
+		short int * __restrict__ In,
+		short int * __restrict__ Out,
+		Kernel_T *Ker);
+extern void FN_ReLU_SW_2(
+		short int * __restrict__ In,
+		short int * __restrict__ Out,
+		Kernel_T *Ker);
+extern void FN_MedParConv_3x3_S2_ReLU_5(
+		short int * __restrict__ In,
+		short int * __restrict__ Filter,
+		short int * __restrict__ Out,
+		unsigned int Norm,
+		short int * __restrict__ Bias,
+		Kernel_T *Ker);
+extern void FN_MedParConv_3x3_S1_6(
+		short int * __restrict__ In,
+		short int * __restrict__ Filter,
+		short int * __restrict__ Out,
+		unsigned int Norm,
+		short int * __restrict__ Bias,
+		Kernel_T *Ker);
+extern void FN_MedParConv_1x1_S2_7(
+		short int * __restrict__ In,
+		short int * __restrict__ Filter,
+		short int * __restrict__ Out,
+		unsigned int Norm,
+		short int * __restrict__ Bias,
+		Kernel_T *Ker);
+extern void FN_AddFeatureMaps_SW_2(
+		short int * __restrict__ In,
+		short int * __restrict__ Out,
+		Kernel_T *Ker);
+extern void FN_ReLU_SW_3(
+		short int * __restrict__ In,
+		short int * __restrict__ Out,
+		Kernel_T *Ker);
+extern void FN_MedParConv_3x3_S2_ReLU_8(
+		short int * __restrict__ In,
+		short int * __restrict__ Filter,
+		short int * __restrict__ Out,
+		unsigned int Norm,
+		short int * __restrict__ Bias,
+		Kernel_T *Ker);
+extern void FN_MedParConv_3x3_S1_9(
+		short int * __restrict__ In,
+		short int * __restrict__ Filter,
+		short int * __restrict__ Out,
+		unsigned int Norm,
+		short int * __restrict__ Bias,
+		Kernel_T *Ker);
+extern void FN_MedParConv_1x1_S1_ReLU_10(
+		short int * __restrict__ In,
+		short int * __restrict__ Filter,
+		short int * __restrict__ Out,
+		unsigned int Norm,
+		short int * __restrict__ Bias,
+		Kernel_T *Ker);
+extern void FN_AddFeatureMapsReLu_SW_3(
+		short int * __restrict__ In,
+		short int * __restrict__ Out,
+		Kernel_T *Ker);
+extern void FN_LinearLayer_SW_1(
 		Word16 * __restrict__ In,
 		Word16 * __restrict__ Filter,
 		unsigned int NormFilter,
@@ -152,7 +246,25 @@ extern void LinearLayer_SW_3(
 		Word16 * __restrict__ Out,
 		int OutSize,
 		Kernel_T *Ker);
-extern void LinearLayer_SW_4(
+extern void FN_LinearLayer_SW_2(
+		Word16 * __restrict__ In,
+		Word16 * __restrict__ Filter,
+		unsigned int NormFilter,
+		Word16 * __restrict__ Bias,
+		unsigned int NormBias,
+		Word16 * __restrict__ Out,
+		int OutSize,
+		Kernel_T *Ker);
+extern void FN_LinearLayer_SW_3(
+		Word16 * __restrict__ In,
+		Word16 * __restrict__ Filter,
+		unsigned int NormFilter,
+		Word16 * __restrict__ Bias,
+		unsigned int NormBias,
+		Word16 * __restrict__ Out,
+		int OutSize,
+		Kernel_T *Ker);
+extern void FN_LinearLayer_SW_4(
 		Word16 * __restrict__ In,
 		Word16 * __restrict__ Filter,
 		unsigned int NormFilter,

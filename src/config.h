@@ -25,11 +25,13 @@
 #define PULP_DRONET_CONFIG
 
 /****************************** USER PARAMETERS *******************************/
+#define TEST_IMAGE
+#define TEST_ALL_NNS
 // #define DATASET_TEST				// Enable if you test the Dataset (single iteration)
  #define VERBOSE					// Enables additional information
 // #define VERBOSE_META_ALLOC		
 // #define PRINT_IMAGES
-// #define CHECKSUM					// Enables correctness check per layer
+ #define CHECKSUM					// Enables correctness check per layer
 // #define PROFILE_CL				// Profiling execution from the Cluster
 // #define PROFILE_FC				// Profiling execution from the Fabric Ctrl
 #define PLATFORM		2			// Select 1 for PULP-Shield/GV-SoC or 2 for GAPuino
@@ -40,11 +42,16 @@
 #define CAM_CROP_W_FINDNET		324//108//200			// Cropped camera width 
 #define CAM_CROP_H_FINDNET		180//244//60//200			// Cropped camera height 
 #define DS_RATIO_FINDNET		3			// downsampling ratio after cropping
+#define CAM_CROP_W_FRONTNET		108//324//108//200			// Cropped camera width 
+#define CAM_CROP_H_FRONTNET		60//180//244//60//200			// Cropped camera height 
+#define DS_RATIO_FRONTNET		1//3			// downsampling ratio after cropping
 #define CAM_CROP_W_DRONET		200			// Cropped camera width 
 #define CAM_CROP_H_DRONET		200			// Cropped camera height 
 #define DS_RATIO_DRONET			1			// downsampling ratio after cropping
-#define	NORM_INPUT		8			// Input image Norm Factor [Default Q8.8]
-#define NORM_ACT		11			// Activations Norm Factor [Default Q5.11]
+#define	NORM_INPUT_DRONET		8			// Input image Norm Factor [Default Q8.8]
+#define NORM_ACT_DRONET			11			// Activations Norm Factor [Default Q5.11]
+#define	NORM_INPUT_FRONTNET		0			// Input image Norm Factor [Default Q8.8]
+#define NORM_ACT_FRONTNET		11			// Activations Norm Factor [Default Q5.11]
 /***************************** DEBUGGING SUPPORT ******************************/
 #ifdef DEBUG						// Debug mode requires -Os in the Makefile
 // #define DUMP_I			0		// Dump input FMs: [0 to 18] - 18 means all
@@ -113,10 +120,15 @@
 #define NWEIGTHS		14			// Number of Conv Weights
 const int nweights_exact[NNETS] = {12,14};
 #define SPIM_BUFFER		PULP_MSG_LENGTH// SPI master buffer size [Bytes]
-#define NORM_BIAS_DENSE	NORM_ACT	// Normalization Factor for the Biases of dense layers
+#define NORM_BIAS_DENSE_DRONET	NORM_ACT_DRONET	// Normalization Factor for the Biases of dense layers
+#define NORM_BIAS_DENSE_FRONTNET	NORM_ACT_FRONTNET	// Normalization Factor for the Biases of dense layers
 #define NUM_L2_BUFF		2			// Number of L2 buffers, should be even as there are are always 2 stacks growing towards each other
-#define	CROPPING_X		1			// Cropping area X (Horizontal/Width): 0=Left, 1=Central, 2=Right
-#define	CROPPING_Y		2			// Cropping area Y (Vertical/Height): 0=Top, 1=Central, 2=Bottom
+#define	CROPPING_X_DRONET		1			// Cropping area X (Horizontal/Width): 0=Left, 1=Central, 2=Right
+#define	CROPPING_Y_DRONET		2			// Cropping area Y (Vertical/Height): 0=Top, 1=Central, 2=Bottom
+#define	CROPPING_X_FRONTNET		1			// Cropping area X (Horizontal/Width): 0=Left, 1=Central, 2=Right
+#define	CROPPING_Y_FRONTNET		1			// Cropping area Y (Vertical/Height): 0=Top, 1=Central, 2=Bottom
+#define	CROPPING_X_FINDNET		1			// Cropping area X (Horizontal/Width): 0=Left, 1=Central, 2=Right
+#define	CROPPING_Y_FINDNET		1			// Cropping area Y (Vertical/Height): 0=Top, 1=Central, 2=Bottom
 /******************************************************************************/
 
 /****************************** Cropping Setting *******************************
@@ -130,33 +142,60 @@ const int nweights_exact[NNETS] = {12,14};
  *			2:Bottom	|___________|____Default____|_______________|		   *
  *																			   *
  ******************************************************************************/
-
-#if CROPPING_X==0 		// X Left [0-200]
-#define LL_X_DRONET			0 								// left x coordinate 0
-#define LL_X_FINDNET		0 								// left x coordinate 0
-#elif CROPPING_X==1		// X Central [62-262]
+#if CROPPING_X_DRONET==0 												// X Left [0-200]
+#define LL_X_DRONET			0 											// left x coordinate 0
+#elif CROPPING_X_DRONET==1												// X Central [62-262]
 #define LL_X_DRONET			((CAM_FULLRES_W - CAM_CROP_W_DRONET)/2) 	// left x coordinate 62
-#define LL_X_FINDNET		((CAM_FULLRES_W - CAM_CROP_W_FINDNET)/2) 	// left x coordinate 62
-#elif CROPPING_X==2		// X Right [124-324]
+#elif CROPPING_X_DRONET==2												// X Right [124-324]
 #define LL_X_DRONET			(CAM_FULLRES_W - CAM_CROP_W_DRONET) 		// left x coordinate 124
+#endif
+
+#if CROPPING_X_FINDNET==0 												// X Left [0-200]
+#define LL_X_FINDNET		0 											// left x coordinate 0
+#elif CROPPING_X_FINDNET==1												// X Central [62-262]
+#define LL_X_FINDNET		((CAM_FULLRES_W - CAM_CROP_W_FINDNET)/2) 	// left x coordinate 62
+#elif CROPPING_X_FINDNET==2												// X Right [124-324]
 #define LL_X_FINDNET		(CAM_FULLRES_W - CAM_CROP_W_FINDNET) 		// left x coordinate 124
 #endif
 
-#if CROPPING_Y==0 		// Y Top [0-200]
-#define LL_Y_DRONET			0								// up y coordinate 0
-#define LL_Y_FINDNET		0								// up y coordinate 0
-#elif CROPPING_Y==1 	// Y Central [22-222]
-#define LL_Y_DRONET			((CAM_FULLRES_H - CAM_CROP_H_DRONET)/2)	// up y coordinate 22
+#if CROPPING_X_FRONTNET==0 												// X Left [0-200]
+#define LL_X_FRONTNET		0 											// left x coordinate 0
+#elif CROPPING_X_FRONTNET==1											// X Central [62-262]
+#define LL_X_FRONTNET		((CAM_FULLRES_W - CAM_CROP_W_FRONTNET)/2) 	// left x coordinate 62
+#elif CROPPING_X_FRONTNET==2											// X Right [124-324]
+#define LL_X_FRONTNET		(CAM_FULLRES_W - CAM_CROP_W_FRONTNET) 		// left x coordinate 124
+#endif
+
+#if CROPPING_Y_DRONET==0 														// Y Top [0-200]
+#define LL_Y_DRONET			0											// up y coordinate 0
+#elif CROPPING_Y_DRONET==1 													// Y Central [22-222]
+#define LL_Y_DRONET			((CAM_FULLRES_H - CAM_CROP_H_DRONET)/2)		// up y coordinate 22
+#elif CROPPING_Y_DRONET==2 													// Y Bottom [44-244]
+#define LL_Y_DRONET			(CAM_FULLRES_H - CAM_CROP_H_DRONET)			// up y coordinate 44
+#endif
+
+#if CROPPING_Y_FINDNET==0 														// Y Top [0-200]
+#define LL_Y_FINDNET		0											// up y coordinate 0
+#elif CROPPING_Y_FINDNET==1 													// Y Central [22-222]
 #define LL_Y_FINDNET		((CAM_FULLRES_H - CAM_CROP_H_FINDNET)/2)	// up y coordinate 22
-#elif CROPPING_Y==2 	// Y Bottom [44-244]
-#define LL_Y_DRONET			(CAM_FULLRES_H - CAM_CROP_H_DRONET)		// up y coordinate 44
+#elif CROPPING_Y_FINDNET==2 													// Y Bottom [44-244]
 #define LL_Y_FINDNET		(CAM_FULLRES_H - CAM_CROP_H_FINDNET)		// up y coordinate 44
 #endif
 
-#define UR_X_DRONET			CAM_CROP_W_DRONET + LL_X_DRONET					// right x coordinate
-#define UR_X_FINDNET		CAM_CROP_W_FINDNET + LL_X_FINDNET					// right x coordinate
-#define UR_Y_DRONET			CAM_CROP_H_DRONET + LL_Y_DRONET 				// bottom y coordinate
-#define UR_Y_FINDNET		CAM_CROP_H_FINDNET + LL_Y_FINDNET 				// bottom y coordinate
+#if CROPPING_Y_FRONTNET==0 														// Y Top [0-200]
+#define LL_Y_FRONTNET		0											// up y coordinate 0
+#elif CROPPING_Y_FRONTNET==1 													// Y Central [22-222]
+#define LL_Y_FRONTNET		((CAM_FULLRES_H - CAM_CROP_H_FRONTNET)/2)	// up y coordinate 22
+#elif CROPPING_Y_FRONTNET==2 													// Y Bottom [44-244]
+#define LL_Y_FRONTNET		(CAM_FULLRES_H - CAM_CROP_H_FRONTNET)		// up y coordinate 44
+#endif
+
+#define UR_X_DRONET			CAM_CROP_W_DRONET + LL_X_DRONET				// right x coordinate
+#define UR_X_FINDNET		CAM_CROP_W_FINDNET + LL_X_FINDNET			// right x coordinate
+#define UR_X_FRONTNET		CAM_CROP_W_FRONTNET + LL_X_FRONTNET			// right x coordinate
+#define UR_Y_DRONET			CAM_CROP_H_DRONET + LL_Y_DRONET 			// bottom y coordinate
+#define UR_Y_FINDNET		CAM_CROP_H_FINDNET + LL_Y_FINDNET 			// bottom y coordinate
+#define UR_Y_FRONTNET		CAM_CROP_H_FRONTNET + LL_Y_FRONTNET 		// bottom y coordinate
 
 /******************************************************************************/
 
@@ -638,6 +677,12 @@ const char *		L3_bias_files[NNETS][NWEIGTHS] = {{
 }
 };
 
+/* -------------------------- L3 Input File Names (for testing) -------------- */
+const char *		L3_input_files[NNETS] = {
+	"input_dronet.hex",		
+	"input_frontnet.hex"
+};
+
 /* ----------------------- Weights Ground Truth (GT) ------------------------ */
 const unsigned int	L3_weights_GT[NNETS][NWEIGTHS] = {{
 	25985189,					// 0	5x5ConvMax_1
@@ -705,7 +750,7 @@ const unsigned int	L3_biases_GT[NNETS][NWEIGTHS] = {{
 };
 
 /* --------------------- Quantization Factor per layer ---------------------- */
-const int			Q_Factor[NWEIGTHS] = {
+const int			Q_Factor[NNETS][NWEIGTHS] = {{
 	12,							// 0	5x5ConvMax_1
 	14,							// 2	3x3ConvReLU_2
 	14,							// 3	3x3Conv_3
@@ -718,13 +763,31 @@ const int			Q_Factor[NWEIGTHS] = {
 	12,							// 14	1x1Conv_10
 	11,							// 16	Dense_1
 	11 							// 17	Dense_2
+},
+{
+	21,								// 0	5x5ConvMax_1
+	16,								// 2	3x3ConvReLU_2
+	16,								// 3	3x3Conv_3
+	16,								// 4	1x1Conv_4
+	17,								// 7	3x3ConvReLU_5
+	16,								// 8	3x3Conv_6
+	10,								// 9	1x1Conv_7
+	17,								// 12	3x3ConvReLU_8
+	15,								// 13	3x3Conv_9
+	8,								// 14	1x1Conv_10
+	17,								// 16	Dense_1 
+	17,								// 17	Dense_2
+	17,								// 18	Dense_3
+	16 								// 19	Dense_4
+}
 };
 
 #ifdef CHECKSUM
 /* --------------------- Layer output Ground Truth (GT) --------------------- *
- * for:	pulp-dronet/dataset/Himax_Dataset/test_2/frame_22.pgm						  *
+ * DroNet: for:	pulp-dronet/dataset/Himax_Dataset/test_2/frame_22.pgm	
+ * FrontNet: for:	pulp-frontnet/dataset/test5000.pgm						  *
  * -------------------------------------------------------------------------- */
-const unsigned int	Layer_GT[NLAYERS] = {
+const unsigned int	Layer_GT[NNETS][NLAYERS] = {{
 	3583346007,					// 0	5x5ConvMax_1
 	33640519,					// 1	ReLU_1
 	3054757,					// 2	3x3ConvReLU_2
@@ -743,7 +806,31 @@ const unsigned int	Layer_GT[NLAYERS] = {
 	34510,						// 15	AddReLU_3
 	193,						// 16	Dense_1
 	59518						// 17	Dense_2
+},
+{
+	533320094,						// 0	5x5ConvMax_1
+	3550847,						// 1	ReLU_1
+	1949978,						// 2	3x3ConvReLU_2
+	127459912,						// 3	3x3Conv_3
+	88121368,						// 4	1x1Conv_4
+	104366688,						// 5	Add_1
+	1728604,						// 6	ReLU_2
+	276986,							// 7	3x3ConvReLU_5
+	69431674,						// 8	3x3Conv_6
+	66248119,						// 9	1x1Conv_7
+	72830769,						// 10	Add_2
+	449558,							// 11	ReLU_3
+	48111,							// 12	3x3ConvReLU_8
+	60123130,						// 13	3x3Conv_9
+	30602091,						// 14	1x1Conv_10
+	18428,							// 15	AddReLU_3
+	2970,							// 16	Dense_1
+	65328,							// 17	Dense_2
+	65489,							// 18	Dense_3
+	65380							// 19	Dense_4
+}
 };
+
 #endif // CHECKSUM
 
 #define MEM_ID_O1 				0

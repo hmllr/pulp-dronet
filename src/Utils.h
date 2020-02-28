@@ -60,7 +60,15 @@ static void dumpFMs(int id, short int *FM, int in_out, int type, int netId) {
 
 	int channels	= 0;
 	int size		= 0;
-	int Norm		= NORM_ACT;
+	int Norm;
+	if (netId==DRONET_ID)
+	{
+		Norm		= NORM_ACT_DRONET;
+	}else if (netId==FRONTNET_ID)
+	{
+		Norm		= NORM_ACT_FRONTNET;
+	}
+	
 	int width		= 0;
 	int height		= 0;
 
@@ -69,7 +77,15 @@ static void dumpFMs(int id, short int *FM, int in_out, int type, int netId) {
 		width		= inW[netId][id];
 		height		= inH[netId][id];
 		// We always use Q11 for FMs except for the Input Q8
-		if(id==0) Norm = NORM_INPUT;
+		if(id==0){ 
+			if (netId==DRONET_ID)
+			{
+				Norm		= NORM_INPUT_DRONET;
+			}else if (netId==FRONTNET_ID)
+			{
+				Norm		= NORM_INPUT_FRONTNET;
+			}
+		}
 	} else {		// Output
 		channels	= outCh[netId][id];
 		width		= outW[netId][id];
@@ -97,7 +113,7 @@ static void dumpFMs(int id, short int *FM, int in_out, int type, int netId) {
  * id: layer id to be dumped
  * W: pointer to the weights
  * type: select to print as fixed-point (0) or float (1) */
-static void dumpW(int id, short int *W, int type, netId) {
+static void dumpW(int id, short int *W, int type, int netId) {
 
 	int ich		= inCh[netId][id];
 	int och		= outCh[netId][id];
@@ -128,19 +144,27 @@ static void dumpW(int id, short int *W, int type, netId) {
  * id: layer id to be dumped
  * bias: pointer to the bias
  * type: select to print as fixed-point (0) or float (1) */
-static void dumpBias(int id, short int *bias, int type, netId) {
+static void dumpBias(int id, short int *bias, int type, int netId) {
 
 	int och = outCh[netId][id];
 
 #ifdef VERBOSE
 	printf("== layer %d ==\n", id);
 #endif
+	int Norm;
+	if (netId==DRONET_ID)
+	{
+		Norm		= NORM_ACT_DRONET;
+	}else if (netId==FRONTNET_ID)
+	{
+		Norm		= NORM_ACT_FRONTNET;
+	}
 
 	for(int i=0; i<och; i++) {
 		if(type==0)
 			printf("0x%04x\n", (unsigned short int) bias[i]);
 		else
-			printf("%f\n", fixed2float(bias[i], NORM_ACT));
+			printf("%f\n", fixed2float(bias[i], Norm));
 	}
 }
 

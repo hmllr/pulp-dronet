@@ -51,8 +51,9 @@ static int 				image_size_bytes;
 static short int *		L2_bias[NNETS][NWEIGTHS];
 static short int *		L3_weights[NNETS][NWEIGTHS];
 static int				L3_sizes[NNETS][NWEIGTHS]; 
+static short int *		L3_input[NNETS]; 
 static unsigned int		L2_bias_sizes[NNETS][NWEIGTHS]; 
-static int 				Norm_Factor[NWEIGTHS];
+static int 				Norm_Factor[NNETS][NWEIGTHS];
 
 static short int		SPIM_tx[SPIM_BUFFER/2]; // divided by 2 because in bytes
 static short int		SPIM_rx[SPIM_BUFFER/2]; // divided by 2 because in bytes
@@ -61,11 +62,26 @@ static rt_spim_t * 		spim;
 static short int *		L3_temp_O5;
 
 static char				dronet = 0;
+static char				frontnet = 0;
 
 rt_hyperram_t* hyperram; // not static as used by findnet as well
 
 
 unsigned int PMU_set_voltage(unsigned int Voltage, unsigned int CheckFrequencies);
+
+static void check_layer_weight(short unsigned int *weight, int check_sum_true, int dim) {
+  int checksum = 0;
+  short unsigned int *ptr = (short unsigned int *) weight;
+  for(int j=0; j<(int)(dim / sizeof(short unsigned int)); j++) {
+    checksum += (unsigned int) ptr[j];
+    // printf("%d ", ptr[j]);
+  }
+
+  if(check_sum_true == checksum)
+    printf("Checksum weight/bias Layer :\tOk\n");
+  else 
+    printf("Checksum weight/bias Layer :\tFailed [%u vs. %u]\n", checksum, check_sum_true);
+}
 
 
 static void handle_error() {
@@ -151,18 +167,18 @@ static void L2toL3(short int *L3_address, short int *L2_address, int size) {
 
 
 #ifdef CHECKSUM
-static void check_layer(short int *output, int layer) {
+static void check_layer(int netId, short int *output, int layer) {
 
 	unsigned int checksum = 0;
 	short unsigned int *ptr = (short unsigned int *) output;
-	for(int j=0; j<outCh[layer]*outW[layer]*outH[layer]; j++) {
+	for(int j=0; j<outCh[netId][layer]*outW[netId][layer]*outH[netId][layer]; j++) {
 		checksum += (unsigned int) ptr[j];
 	}
 
-	if(Layer_GT[layer] == checksum)
+	if(Layer_GT[netId][layer] == checksum)
 		printf("Checksum Layer %d:\tOk\n", layer+1);
 	else 
-		printf("Checksum Layer %d:\tFailed [%u vs. %u]\n", layer+1, checksum, Layer_GT[layer]);
+		printf("Checksum Layer %d:\tFailed [%u vs. %u]\n", layer+1, checksum, Layer_GT[netId][layer]);
 }
 #endif
 
@@ -170,8 +186,12 @@ static void check_layer(short int *output, int layer) {
 static void end_of_frame() {
 
 	rt_cam_control(camera, CMD_PAUSE, NULL);
+	printf("Got image\n");
 
 #if CROPPING == 1
+#ifdef SHOW_IMAGES
+  WriteImageToFile("../../../NN_input_image.ppm",CAM_FULLRES_W,CAM_FULLRES_H,L2_image);
+#endif //SHOW_IMAGES
 	unsigned char * origin 		= (unsigned char *) L2_image;
 	unsigned char * ptr_crop 	= (unsigned char *) L2_image;
 	int 			outid 		= 0;
@@ -183,6 +203,12 @@ static void end_of_frame() {
 		cam_crop_h = CAM_CROP_H_DRONET;
 		cam_crop_w = CAM_CROP_W_DRONET;
 		ds_ratio = DS_RATIO_DRONET;
+	}else if(frontnet){
+		printf("Image cropping for Frontnet\n");
+		init_offset = CAM_FULLRES_W * LL_Y_FRONTNET + LL_X_FRONTNET; 
+		cam_crop_h = CAM_CROP_H_FRONTNET;
+		cam_crop_w = CAM_CROP_W_FRONTNET;
+		ds_ratio = DS_RATIO_FRONTNET;
 	}else{
 		printf("Image cropping for Findnet\n");
 		init_offset = CAM_FULLRES_W * LL_Y_FINDNET + LL_X_FINDNET; 
@@ -205,7 +231,7 @@ static void end_of_frame() {
 #endif
 
 #ifdef SHOW_IMAGES
-  WriteImageToFile("../../../NN_input_image.ppm",cam_crop_w/ds_ratio,cam_crop_h/ds_ratio,L2_image);
+  WriteImageToFile("../../../NN_input_image_cropped.ppm",cam_crop_w/ds_ratio,cam_crop_h/ds_ratio,L2_image);
 #endif //SHOW_IMAGES
 	
 	// we need chars for H/nH and short int for dronet 
@@ -216,6 +242,17 @@ static void end_of_frame() {
 			rt_event_execute(NULL, 0);
 			for(int j=CAM_CROP_W_DRONET-1; j>=0; j--) {
 				L2_image[i*CAM_CROP_W_DRONET+j] = (short int) ptr[i*CAM_CROP_W_DRONET+j];
+				//printf("%d ", L2_image[i*CAM_CROP_W_DRONET+j]);
+			}
+		}
+	} else if(frontnet){
+		unsigned char * ptr = (unsigned char *) L2_image;
+
+		for(int i=CAM_CROP_H_FRONTNET-1; i>=0; i--) {
+			rt_event_execute(NULL, 0);
+			for(int j=CAM_CROP_W_FRONTNET-1; j>=0; j--) {
+				L2_image[i*CAM_CROP_W_FRONTNET+j] = (short int) ptr[i*CAM_CROP_W_FRONTNET+j];
+				//printf("%d ", L2_image[i*CAM_CROP_W_FRONTNET+j]);
 			}
 		}
 	}
@@ -225,10 +262,19 @@ static void end_of_frame() {
 
 
 static void enqueue_capture() {
-
+#ifdef TEST_IMAGE
+	if(dronet){
+		rt_hyperram_read(hyperram, L2_image, L3_input[DRONET_ID], CAM_FULLRES_W*CAM_FULLRES_H*sizeof(unsigned char), NULL); 
+	}else if(frontnet){
+		rt_hyperram_read(hyperram, L2_image, L3_input[FRONTNET_ID], CAM_FULLRES_W*CAM_FULLRES_H*sizeof(unsigned char), NULL); 
+	}// for findnet we can use the by dory provided testing
+	printf("copied fake image\n");
+	end_of_frame();
+#else
 	rt_cam_control(camera, CMD_START, NULL);
 
 	rt_camera_capture(camera, (unsigned char*)L2_image, CAM_WIDTH*CAM_HEIGHT*sizeof(unsigned char), rt_event_get(NULL, end_of_frame, NULL));
+ #endif
 }
 
 
@@ -279,14 +325,15 @@ static void RunPULPFrontnet() {
 
 	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][0]);
 
-	L3toL2(L3_weights[0], L2_weights, L3_sizes[FRONTNET_ID][0]);
+	L3toL2(L3_weights[FRONTNET_ID][0], L2_weights, L3_sizes[FRONTNET_ID][0]);
+	//check_layer_weight(L2_weights, L3_weights_GT[FRONTNET_ID][0], L3_sizes[FRONTNET_ID][0]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	LargeParConv_5x5_S2_Max2x2_S2_H_1(L2_input, L2_weights, L2_output[0], Norm_Factor[0], L2_bias[FRONTNET_ID][0], 0);
+	FN_LargeParConv_5x5_S2_Max2x2_S2_H_1(L2_input, L2_weights, L2_output[0], Norm_Factor[FRONTNET_ID][0], L2_bias[FRONTNET_ID][0], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -305,7 +352,7 @@ static void RunPULPFrontnet() {
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[0], 0);
+	check_layer(FRONTNET_ID, L2_output[0], 0);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][0]);
@@ -330,7 +377,7 @@ __rt_cluster_push_fc_event(event_capture);
 
 	L2_output[1] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][1]);
 
-	ReLU_SW_1(L2_input, L2_output[1], 0);
+	FN_ReLU_SW_1(L2_input, L2_output[1], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[1] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -341,7 +388,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[1], 1);
+	check_layer(FRONTNET_ID, L2_output[1], 1);
 #endif
 
 	L2_input = L2_output[1];
@@ -358,7 +405,7 @@ __rt_cluster_push_fc_event(event_capture);
 
 	L2_output[2] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][2]);
 	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][1]);
-
+	printf("size: %d place: %d\n", outputSizesB[FRONTNET_ID][2], L2_output[2]);
 	L3toL2(L3_weights[FRONTNET_ID][1], L2_weights, L3_sizes[FRONTNET_ID][1]);
 
 #ifdef PROFILE_CL
@@ -366,7 +413,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S2_ReLU_2(L2_input, L2_weights, L2_output[2], Norm_Factor[1], L2_bias[FRONTNET_ID][1], 0);
+	FN_MedParConv_3x3_S2_ReLU_2(L2_input, L2_weights, L2_output[2], Norm_Factor[FRONTNET_ID][1], L2_bias[FRONTNET_ID][1], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -385,7 +432,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[2], 2);
+	check_layer(FRONTNET_ID, L2_output[2], 2);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][1]);
@@ -415,7 +462,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S1_3(L2_input, L2_weights, L2_output[3], Norm_Factor[2], L2_bias[FRONTNET_ID][2], 0);
+	FN_MedParConv_3x3_S1_3(L2_input, L2_weights, L2_output[3], Norm_Factor[FRONTNET_ID][2], L2_bias[FRONTNET_ID][2], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -434,7 +481,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[3], 3);
+	check_layer(FRONTNET_ID, L2_output[3], 3);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][2]);
@@ -464,7 +511,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_1x1_S2_4(L2_input, L2_weights, L2_output[4], Norm_Factor[3], L2_bias[FRONTNET_ID][3], 0);
+	FN_MedParConv_1x1_S2_4(L2_input, L2_weights, L2_output[4], Norm_Factor[FRONTNET_ID][3], L2_bias[FRONTNET_ID][3], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[4] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -483,7 +530,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[4], 4);
+	check_layer(FRONTNET_ID, L2_output[4], 4);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][3]);
@@ -502,7 +549,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	AddFeatureMaps_SW_1(L2_input, L2_output[5], 0);
+	FN_AddFeatureMaps_SW_1(L2_input, L2_output[5], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[5] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -513,7 +560,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[5], 5);
+	check_layer(FRONTNET_ID, L2_output[5], 5);
 #endif
 
 	meta_free(0, outputSizesB[FRONTNET_ID][3]);
@@ -535,7 +582,7 @@ __rt_cluster_push_fc_event(event_capture);
 
 	L2_output[6] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][6]);
 
-	ReLU_SW_2(L2_input, L2_output[6], 0);
+	FN_ReLU_SW_2(L2_input, L2_output[6], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[6] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -546,7 +593,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[6], 6);
+	check_layer(FRONTNET_ID, L2_output[6], 6);
 #endif
 	
 	L2_input = L2_output[6];
@@ -571,7 +618,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S2_ReLU_5(L2_input, L2_weights, L2_output[7], Norm_Factor[4], L2_bias[FRONTNET_ID][4], 0);
+	FN_MedParConv_3x3_S2_ReLU_5(L2_input, L2_weights, L2_output[7], Norm_Factor[FRONTNET_ID][4], L2_bias[FRONTNET_ID][4], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[7] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -590,7 +637,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[7], 7);
+	check_layer(FRONTNET_ID, L2_output[7], 7);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][4]);
@@ -619,7 +666,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S1_6(L2_input, L2_weights, L2_output[8], Norm_Factor[5], L2_bias[FRONTNET_ID][5], 0);
+	FN_MedParConv_3x3_S1_6(L2_input, L2_weights, L2_output[8], Norm_Factor[FRONTNET_ID][5], L2_bias[FRONTNET_ID][5], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[8] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -638,7 +685,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[8], 8);
+	check_layer(FRONTNET_ID, L2_output[8], 8);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][5]);
@@ -669,7 +716,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_1x1_S2_7(L2_input, L2_weights, L2_output[9], Norm_Factor[6], L2_bias[FRONTNET_ID][6], 0);
+	FN_MedParConv_1x1_S2_7(L2_input, L2_weights, L2_output[9], Norm_Factor[FRONTNET_ID][6], L2_bias[FRONTNET_ID][6], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[9] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -688,7 +735,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[9], 9);
+	check_layer(FRONTNET_ID, L2_output[9], 9);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][6]);
@@ -707,7 +754,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	AddFeatureMaps_SW_2(L2_input, L2_output[10], 0);
+	FN_AddFeatureMaps_SW_2(L2_input, L2_output[10], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[10] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -718,7 +765,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[10], 10);
+	check_layer(FRONTNET_ID, L2_output[10], 10);
 #endif
 
 	meta_free(1, outputSizesB[FRONTNET_ID][8]);
@@ -740,7 +787,7 @@ __rt_cluster_push_fc_event(event_capture);
 
 	L2_output[11] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][11]);
 
-	ReLU_SW_3(L2_input, L2_output[11], 0);
+	FN_ReLU_SW_3(L2_input, L2_output[11], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[11] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -751,7 +798,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[11], 11);
+	check_layer(FRONTNET_ID, L2_output[11], 11);
 #endif
 
 	L2_input = L2_output[11];
@@ -776,7 +823,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S2_ReLU_8(L2_input, L2_weights, L2_output[12], Norm_Factor[7], L2_bias[FRONTNET_ID][7], 0);
+	FN_MedParConv_3x3_S2_ReLU_8(L2_input, L2_weights, L2_output[12], Norm_Factor[FRONTNET_ID][7], L2_bias[FRONTNET_ID][7], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[12] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -795,7 +842,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[12], 12);
+	check_layer(FRONTNET_ID, L2_output[12], 12);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][7]);
@@ -825,7 +872,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S1_9(L2_input, L2_weights, L2_output[13], Norm_Factor[8], L2_bias[FRONTNET_ID][8], 0);
+	FN_MedParConv_3x3_S1_9(L2_input, L2_weights, L2_output[13], Norm_Factor[FRONTNET_ID][8], L2_bias[FRONTNET_ID][8], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[13] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -844,7 +891,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[13], 13);
+	check_layer(FRONTNET_ID, L2_output[13], 13);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][8]);
@@ -873,7 +920,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_1x1_S1_ReLU_10(L2_input, L2_weights, L2_output[14], Norm_Factor[9], L2_bias[FRONTNET_ID][9], 0);
+	FN_MedParConv_1x1_S1_ReLU_10(L2_input, L2_weights, L2_output[14], Norm_Factor[FRONTNET_ID][9], L2_bias[FRONTNET_ID][9], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[14] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -892,7 +939,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[14], 14);
+	check_layer(FRONTNET_ID, L2_output[14], 14);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][9]);
@@ -911,7 +958,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	AddFeatureMapsReLu_SW_3(L2_input, L2_output[15], 0);
+	FN_AddFeatureMapsReLu_SW_3(L2_input, L2_output[15], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[15] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -922,7 +969,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[15], 15);
+	check_layer(FRONTNET_ID, L2_output[15], 15);
 #endif
 
 	meta_free(1, outputSizesB[FRONTNET_ID][13]);
@@ -946,13 +993,14 @@ __rt_cluster_push_fc_event(event_capture);
 	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][10]);
 
 	L3toL2(L3_weights[FRONTNET_ID][10], L2_weights, L3_sizes[FRONTNET_ID][10]);
+	//check_layer_weight(L2_weights, L3_weights_GT[FRONTNET_ID][10], L3_sizes[FRONTNET_ID][10]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[16] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	LinearLayer_SW_1(L2_input, L2_weights, Norm_Factor[10], L2_bias[FRONTNET_ID][10], NORM_BIAS_DENSE, L2_output[16], 0, 0);
+	FN_LinearLayer_SW_1(L2_input, L2_weights, Norm_Factor[FRONTNET_ID][10], L2_bias[FRONTNET_ID][10], NORM_BIAS_DENSE_FRONTNET, L2_output[16], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[16] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -971,7 +1019,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[16], 16);
+	check_layer(FRONTNET_ID, L2_output[16], 16);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][10]);
@@ -1002,7 +1050,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	LinearLayer_SW_2(L2_input, L2_weights, Norm_Factor[11], L2_bias[FRONTNET_ID][11], NORM_BIAS_DENSE, L2_output[17], 0, 0);
+	FN_LinearLayer_SW_2(L2_input, L2_weights, Norm_Factor[FRONTNET_ID][11], L2_bias[FRONTNET_ID][11], NORM_BIAS_DENSE_FRONTNET, L2_output[17], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[17] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1021,7 +1069,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[17], 17);
+	check_layer(FRONTNET_ID, L2_output[17], 17);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][11]);
@@ -1052,7 +1100,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	LinearLayer_SW_3(L2_input, L2_weights, Norm_Factor[12], L2_bias[FRONTNET_ID][12], NORM_BIAS_DENSE, L2_output[18], 0, 0);
+	FN_LinearLayer_SW_3(L2_input, L2_weights, Norm_Factor[FRONTNET_ID][12], L2_bias[FRONTNET_ID][12], NORM_BIAS_DENSE_FRONTNET, L2_output[18], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[18] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1071,7 +1119,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[18], 18);
+	check_layer(FRONTNET_ID, L2_output[18], 18);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][12]);
@@ -1102,7 +1150,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	LinearLayer_SW_4(L2_input, L2_weights, Norm_Factor[13], L2_bias[FRONTNET_ID][13], NORM_BIAS_DENSE, L2_output[19], 0, 0);
+	FN_LinearLayer_SW_4(L2_input, L2_weights, Norm_Factor[FRONTNET_ID][13], L2_bias[FRONTNET_ID][13], NORM_BIAS_DENSE_DRONET, L2_output[19], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[19] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1121,7 +1169,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[19], 19);
+	check_layer(FRONTNET_ID, L2_output[19], 19);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][13]);
@@ -1181,13 +1229,14 @@ static void RunPULPDronet() {
 
 	L2_weights = (short int *) meta_alloc(MEM_ID_W1, L3_sizes[DRONET_ID][0]);
 
-	L3toL2(L3_weights[0], L2_weights, L3_sizes[DRONET_ID][0]);
+	L3toL2(L3_weights[DRONET_ID][0], L2_weights, L3_sizes[DRONET_ID][0]);
+	//check_layer_weight(L2_weights, L3_weights_GT[DRONET_ID][0], L3_sizes[DRONET_ID][0]);
 
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-	LargeParConv_5x5_S2_Max2x2_S2_H_1(L2_input, L2_weights, L2_output[0], Norm_Factor[0], L2_bias[DRONET_ID][0], 0);
+	LargeParConv_5x5_S2_Max2x2_S2_H_1(L2_input, L2_weights, L2_output[0], Norm_Factor[DRONET_ID][0], L2_bias[DRONET_ID][0], 0);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
@@ -1205,7 +1254,7 @@ static void RunPULPDronet() {
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[0], 0);
+	check_layer(DRONET_ID, L2_output[0], 0);
 #endif
 
 	meta_free(MEM_ID_W1, L3_sizes[DRONET_ID][0]);
@@ -1235,7 +1284,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_1x1_S2_4(L2_input, L2_weights, L2_output[4], Norm_Factor[3], L2_bias[DRONET_ID][3], 0);
+	MedParConv_1x1_S2_4(L2_input, L2_weights, L2_output[4], Norm_Factor[DRONET_ID][3], L2_bias[DRONET_ID][3], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[4] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1254,7 +1303,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[4], 4);
+	check_layer(DRONET_ID, L2_output[4], 4);
 #endif
 
 	meta_free(MEM_ID_W4, L3_sizes[DRONET_ID][3]);
@@ -1289,7 +1338,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[1], 1);
+	check_layer(DRONET_ID, L2_output[1], 1);
 #endif
 	meta_free(MEM_ID_O1, outputSizesB[DRONET_ID][0]);
 
@@ -1314,7 +1363,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S2_ReLU_2(L2_input, L2_weights, L2_output[2], Norm_Factor[1], L2_bias[DRONET_ID][1], 0);
+	MedParConv_3x3_S2_ReLU_2(L2_input, L2_weights, L2_output[2], Norm_Factor[DRONET_ID][1], L2_bias[DRONET_ID][1], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1333,7 +1382,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[2], 2);
+	check_layer(DRONET_ID, L2_output[2], 2);
 #endif
 
 	meta_free(MEM_ID_W2, L3_sizes[DRONET_ID][1]);
@@ -1361,7 +1410,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S1_3(L2_input, L2_weights, L2_output[3], Norm_Factor[2], L2_bias[DRONET_ID][2], 0);
+	MedParConv_3x3_S1_3(L2_input, L2_weights, L2_output[3], Norm_Factor[DRONET_ID][2], L2_bias[DRONET_ID][2], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1380,7 +1429,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[3], 3);
+	check_layer(DRONET_ID, L2_output[3], 3);
 #endif
 
 	meta_free(MEM_ID_W3, L3_sizes[DRONET_ID][2]);
@@ -1390,7 +1439,7 @@ __rt_cluster_push_fc_event(event_capture);
 	L2_output[4] = (short int *) meta_alloc(MEM_ID_O5, outputSizesB[DRONET_ID][4]);
 	L3toL2(L3_temp_O5, L2_output[4], outputSizesB[DRONET_ID][4]);
 #ifdef CHECKSUM
-	check_layer(L2_output[4], 4);
+	check_layer(DRONET_ID, L2_output[4], 4);
 #endif	
 
 /* -------------------------------- ADD RES 1 -------------------------------- */
@@ -1417,7 +1466,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[5], 5);
+	check_layer(DRONET_ID, L2_output[5], 5);
 #endif
 
 	meta_free(MEM_ID_O4, outputSizesB[DRONET_ID][4]);
@@ -1448,7 +1497,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[6], 6);
+	check_layer(DRONET_ID, L2_output[6], 6);
 #endif
 	
 
@@ -1472,7 +1521,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S2_ReLU_5(L2_input, L2_weights, L2_output[7], Norm_Factor[4], L2_bias[DRONET_ID][4], 0);
+	MedParConv_3x3_S2_ReLU_5(L2_input, L2_weights, L2_output[7], Norm_Factor[DRONET_ID][4], L2_bias[DRONET_ID][4], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[7] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1491,7 +1540,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[7], 7);
+	check_layer(DRONET_ID, L2_output[7], 7);
 #endif
 
 	meta_free(MEM_ID_W5, L3_sizes[DRONET_ID][4]);
@@ -1518,7 +1567,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S1_6(L2_input, L2_weights, L2_output[8], Norm_Factor[5], L2_bias[DRONET_ID][5], 0);
+	MedParConv_3x3_S1_6(L2_input, L2_weights, L2_output[8], Norm_Factor[DRONET_ID][5], L2_bias[DRONET_ID][5], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[8] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1537,7 +1586,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[8], 8);
+	check_layer(DRONET_ID, L2_output[8], 8);
 #endif
 
 	meta_free(MEM_ID_W6, L3_sizes[DRONET_ID][5]);
@@ -1566,7 +1615,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_1x1_S2_7(L2_input, L2_weights, L2_output[9], Norm_Factor[6], L2_bias[DRONET_ID][6], 0);
+	MedParConv_1x1_S2_7(L2_input, L2_weights, L2_output[9], Norm_Factor[DRONET_ID][6], L2_bias[DRONET_ID][6], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[9] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1585,7 +1634,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[9], 9);
+	check_layer(DRONET_ID, L2_output[9], 9);
 #endif
 
 	meta_free(MEM_ID_W7, L3_sizes[DRONET_ID][6]);
@@ -1615,7 +1664,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[10], 10);
+	check_layer(DRONET_ID, L2_output[10], 10);
 #endif
 
 	meta_free(MEM_ID_O9, outputSizesB[DRONET_ID][8]);
@@ -1647,7 +1696,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[11], 11);
+	check_layer(DRONET_ID, L2_output[11], 11);
 #endif
 	
 
@@ -1671,7 +1720,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S2_ReLU_8(L2_input, L2_weights, L2_output[12], Norm_Factor[7], L2_bias[DRONET_ID][7], 0);
+	MedParConv_3x3_S2_ReLU_8(L2_input, L2_weights, L2_output[12], Norm_Factor[DRONET_ID][7], L2_bias[DRONET_ID][7], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[12] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1690,7 +1739,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[12], 12);
+	check_layer(DRONET_ID, L2_output[12], 12);
 #endif
 
 	meta_free(MEM_ID_W8, L3_sizes[DRONET_ID][7]);
@@ -1718,7 +1767,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_3x3_S1_9(L2_input, L2_weights, L2_output[13], Norm_Factor[8], L2_bias[DRONET_ID][8], 0);
+	MedParConv_3x3_S1_9(L2_input, L2_weights, L2_output[13], Norm_Factor[DRONET_ID][8], L2_bias[DRONET_ID][8], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[13] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1737,7 +1786,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[13], 13);
+	check_layer(DRONET_ID, L2_output[13], 13);
 #endif
 
 	meta_free(MEM_ID_W9, L3_sizes[DRONET_ID][8]);
@@ -1764,7 +1813,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	MedParConv_1x1_S1_ReLU_10(L2_input, L2_weights, L2_output[14], Norm_Factor[9], L2_bias[DRONET_ID][9], 0);
+	MedParConv_1x1_S1_ReLU_10(L2_input, L2_weights, L2_output[14], Norm_Factor[DRONET_ID][9], L2_bias[DRONET_ID][9], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[14] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1783,7 +1832,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[14], 14);
+	check_layer(DRONET_ID, L2_output[14], 14);
 #endif
 
 	meta_free(MEM_ID_W10, L3_sizes[DRONET_ID][9]);
@@ -1813,7 +1862,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[15], 15);
+	check_layer(DRONET_ID, L2_output[15], 15);
 #endif
 
 	meta_free(MEM_ID_O14, outputSizesB[DRONET_ID][13]);
@@ -1841,7 +1890,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	LinearLayer_SW_1(L2_input, L2_weights, Norm_Factor[10], L2_bias[DRONET_ID][10], NORM_BIAS_DENSE, L2_output[16], 0, 0);
+	LinearLayer_SW_1(L2_input, L2_weights, Norm_Factor[DRONET_ID][10], L2_bias[DRONET_ID][10], NORM_BIAS_DENSE_DRONET, L2_output[16], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[16] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1860,7 +1909,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[16], 16);
+	check_layer(DRONET_ID, L2_output[16], 16);
 #endif
 
 	meta_free(MEM_ID_W11, L3_sizes[DRONET_ID][10]);
@@ -1888,7 +1937,7 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
-	LinearLayer_SW_2(L2_input, L2_weights, Norm_Factor[11], L2_bias[DRONET_ID][11], NORM_BIAS_DENSE, L2_output[17], 0, 0);
+	LinearLayer_SW_2(L2_input, L2_weights, Norm_Factor[DRONET_ID][11], L2_bias[DRONET_ID][11], NORM_BIAS_DENSE_DRONET, L2_output[17], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[17] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
@@ -1907,7 +1956,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 #ifdef CHECKSUM
-	check_layer(L2_output[17], 17);
+	check_layer(DRONET_ID, L2_output[17], 17);
 #endif
 
 	meta_free(MEM_ID_W12, L3_sizes[DRONET_ID][11]);
@@ -2132,7 +2181,6 @@ int main() {
 			file = rt_fs_open(fs, L3_weights_files[netId][i], 0, NULL);
 			if(file == NULL) {
 	#ifdef VERBOSE
-				printf("%d %d\n", netId, i);
 				printf("Error Opening file: %s\n", L3_weights_files[netId][i]); 
 	#endif
 				return -1;
@@ -2141,10 +2189,12 @@ int main() {
 			L3_sizes[netId][i] = file->size;
 
 			// L3 Memory allocation for all the Layer's weights (i.e.HyperRam)
-			//HACK TODO FIXME!!! L3 allocation bug in gap-sdk
-			
-		 	L3_weights[netId][i] = (short int *) rt_hyperram_alloc(hyperram, L3_sizes[netId][i]/8);
-			//printf("L3_sizes %s Net: %d Layer %d : %d\n", L3_weights_files[netId][i], netId, i+1, L3_sizes[netId][i]);
+			// If it fails here: L3 allocation bug in gap-sdk: rt_hyperram_alloc() is old and using a driver that
+			// doesn't know how big the memory is and just assumes it is 1Mbyte (instead of 8Mbyte)
+			// fix: in rtos/pulp/pulp-os/drivers/hyper/hyperram-v1.c patch this line: if (__pi_hyper_init(hyper, 1000000))
+
+		 	L3_weights[netId][i] = (short int *) rt_hyperram_alloc(hyperram, L3_sizes[netId][i]);
+			printf("L3_sizes %s Net: %d Layer %d : %d place: %d\n", L3_weights_files[netId][i], netId, i+1, L3_sizes[netId][i], L3_weights[netId][i]);
 			if(L3_weights[netId][i] == NULL) {
 	#ifdef VERBOSE
 				printf("Error Allocating L3: Net: %d Layer %d\n", netId, i+1); 
@@ -2219,6 +2269,46 @@ int main() {
 				return -1;
 			}
 		}
+
+		file = rt_fs_open(fs, L3_input_files[netId], 0, NULL);
+			if(file == NULL) {
+	#ifdef VERBOSE
+				printf("Error Opening file: %s\n", L3_input_files[netId]); 
+	#endif
+				return -1;
+			}
+
+			int input_size = file->size;
+
+		 	L3_input[netId] = (short int *) rt_hyperram_alloc(hyperram, input_size);
+			if(L3_input[netId] == NULL) {
+	#ifdef VERBOSE
+				printf("Error Allocating L3: Net: %d Input\n", netId); 
+	#endif
+				return -1;
+			}
+
+			unsigned int rdDone = 0;
+			// loop on chunk in file
+			while(rdDone < (input_size / sizeof(short int))) { 
+
+				// read from HyperFlash
+				int size = rt_fs_read(file, flashBuffer, flashBuffSize, NULL);
+
+				// write to HyperRam
+				rt_hyperram_write(hyperram, flashBuffer, L3_input[netId]+rdDone, size, NULL);
+
+				// checksum 
+				rt_hyperram_read(hyperram, checksumBuff, L3_input[netId]+rdDone, size, NULL);
+
+				short unsigned int *ptr = (short unsigned int *) flashBuffer;
+				// for(int j=0; j<(int)(size / sizeof(short unsigned int)); j++) {
+				// 	checksumF += (unsigned int) ptr[j];
+				// 	checksumR += (unsigned int) checksumBuff[j];
+				// }
+
+				rdDone += size / sizeof(short int);
+			}
 	}
 	// free L2 temporary buffers
 	rt_free(RT_ALLOC_PERIPH, flashBuffer, flashBuffSize);
@@ -2240,18 +2330,33 @@ int main() {
 		for(int i=0; i<NLAYERS; i++)
 			outputSizesB[netId][i] = outCh[netId][i] * outW[netId][i] * outH[netId][i] * sizeof(short int);
 	}
-	Norm_Factor[0] = Q_Factor[0]+NORM_INPUT-NORM_ACT;
-	Norm_Factor[1] = Q_Factor[1];
-	Norm_Factor[2] = Q_Factor[2];
-	Norm_Factor[3] = Q_Factor[3];
-	Norm_Factor[4] = Q_Factor[4];
-	Norm_Factor[5] = Q_Factor[5];
-	Norm_Factor[6] = Q_Factor[6];
-	Norm_Factor[7] = Q_Factor[7];
-	Norm_Factor[8] = Q_Factor[8];
-	Norm_Factor[9] = Q_Factor[9];
-	Norm_Factor[10] = Q_Factor[10];
-	Norm_Factor[11] = Q_Factor[11];
+	Norm_Factor[DRONET_ID][0] = Q_Factor[DRONET_ID][0]+NORM_INPUT_DRONET-NORM_ACT_DRONET;
+	Norm_Factor[DRONET_ID][1] = Q_Factor[DRONET_ID][1];
+	Norm_Factor[DRONET_ID][2] = Q_Factor[DRONET_ID][2];
+	Norm_Factor[DRONET_ID][3] = Q_Factor[DRONET_ID][3];
+	Norm_Factor[DRONET_ID][4] = Q_Factor[DRONET_ID][4];
+	Norm_Factor[DRONET_ID][5] = Q_Factor[DRONET_ID][5];
+	Norm_Factor[DRONET_ID][6] = Q_Factor[DRONET_ID][6];
+	Norm_Factor[DRONET_ID][7] = Q_Factor[DRONET_ID][7];
+	Norm_Factor[DRONET_ID][8] = Q_Factor[DRONET_ID][8];
+	Norm_Factor[DRONET_ID][9] = Q_Factor[DRONET_ID][9];
+	Norm_Factor[DRONET_ID][10] = Q_Factor[DRONET_ID][10];
+	Norm_Factor[DRONET_ID][11] = Q_Factor[DRONET_ID][11];
+
+	Norm_Factor[FRONTNET_ID][0] = Q_Factor[FRONTNET_ID][0]+NORM_INPUT_FRONTNET-NORM_ACT_FRONTNET;
+	Norm_Factor[FRONTNET_ID][1] = Q_Factor[FRONTNET_ID][1];
+	Norm_Factor[FRONTNET_ID][2] = Q_Factor[FRONTNET_ID][2];
+	Norm_Factor[FRONTNET_ID][3] = Q_Factor[FRONTNET_ID][3];
+	Norm_Factor[FRONTNET_ID][4] = Q_Factor[FRONTNET_ID][4];
+	Norm_Factor[FRONTNET_ID][5] = Q_Factor[FRONTNET_ID][5];
+	Norm_Factor[FRONTNET_ID][6] = Q_Factor[FRONTNET_ID][6];
+	Norm_Factor[FRONTNET_ID][7] = Q_Factor[FRONTNET_ID][7];
+	Norm_Factor[FRONTNET_ID][8] = Q_Factor[FRONTNET_ID][8];
+	Norm_Factor[FRONTNET_ID][9] = Q_Factor[FRONTNET_ID][9];
+	Norm_Factor[FRONTNET_ID][10] = Q_Factor[FRONTNET_ID][10];
+	Norm_Factor[FRONTNET_ID][11] = Q_Factor[FRONTNET_ID][11];
+	Norm_Factor[FRONTNET_ID][12] = Q_Factor[FRONTNET_ID][12];
+	Norm_Factor[FRONTNET_ID][13] = Q_Factor[FRONTNET_ID][13];
 
  	for(int i=0; i<NUM_L2_BUFF; i+=2) {
  		L2_base[i] = rt_alloc(RT_ALLOC_L2_CL_DATA, L2_buffers_size[i/2]);
@@ -2312,6 +2417,39 @@ int main() {
 
 	volatile int iter = 0;
 
+#ifdef TEST_ALL_NNS
+	// wait on input image transfer 
+	while(imgTransferDone==0) {
+		rt_event_yield(NULL);
+	}
+	imgTransferDone=0;
+
+	// execute the H/nH NN on the cluster
+  	char head = network_run_FabricController(L2_image, stacks);
+	
+	frontnet = 1;
+	enqueue_capture();
+
+	// execute the function "RunPULPDronet" on the cluster
+	while(imgTransferDone==0) {
+		rt_event_yield(NULL);
+	}
+	imgTransferDone=0;
+	dronet = 1;
+	frontnet = 0;
+	event_capture = rt_event_get(NULL, enqueue_capture, NULL);
+	rt_cluster_call(NULL, CID, (void *) RunPULPFrontnet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
+
+	// execute the function "RunPULPDronet" on the cluster
+	while(imgTransferDone==0) {
+		rt_event_yield(NULL);
+	}
+	imgTransferDone=0;
+
+	rt_cluster_call(NULL, CID, (void *) RunPULPDronet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
+
+#else //TEST_ALL_NNS
+
 #ifndef DATASET_TEST
 	while(1) {
 #endif
@@ -2332,21 +2470,23 @@ int main() {
 		
 		// printf("L2_image %d\n", L2_image);
 	  	char head = network_run_FabricController(L2_image, stacks);
-		dronet = 1; //TODO
-
 		
-		// int arg[3];
-		//   arg[0] = (unsigned int) L3_weights_size;
-		//   arg[1] = (unsigned int) hyperram;
-		//   arg[2] = L2_image;
-
-
-	  	//rt_cluster_call(NULL, CID, (void *)pulp_parallel, arg, stacks,1024+1024, 1024+1024, 1/*rt_nb_pe()*/, NULL);//event_cluster);
-
+	  	if(head){
+	  		frontnet = 1; //TODO	
+	  	}else{
+	  		dronet = 1;
+	  	}
+		enqueue_capture();
+	
 	   	SPIM_tx[0] = PULP_NAV_MSG_TYPE + (PULP_NAV_MSG_HEAD << 8);
 	   	SPIM_tx[1] = head << 8; //3rd byte of SPIM_tx
+#ifdef SPI_COMM
+		// SPI write out result
+		rt_spim_send(spim, SPIM_tx, SPIM_BUFFER*8, RT_SPIM_CS_AUTO, NULL);
+#endif
+
 	 //  	printf("SPIM_tx: %d %d \n", SPIM_tx[0], SPIM_tx[1]);
-	    enqueue_capture();
+	    
 	 //  	printf("pushed event\n");
 	  	//event_cluster = rt_event_get_blocking(NULL);
 		
@@ -2357,9 +2497,13 @@ int main() {
 		}
 		imgTransferDone=0;
 		dronet = 0;
+		frontnet = 0;
 		event_capture = rt_event_get(NULL, enqueue_capture, NULL);
-
-		rt_cluster_call(NULL, CID, (void *) RunPULPFrontnet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
+		if(head){
+			rt_cluster_call(NULL, CID, (void *) RunPULPFrontnet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
+		}else{
+			rt_cluster_call(NULL, CID, (void *) RunPULPDronet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
+		}
 		//rt_event_wait(event_cluster);
 
 #ifdef SPI_COMM
@@ -2375,7 +2519,7 @@ int main() {
 
 #ifdef VERBOSE
 	#ifdef DEBUG
-		printf("Result[steer][coll]:\t%f\t%f\n", fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0], NORM_ACT), fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1], NORM_ACT));
+		printf("Result[steer][coll]:\t%f\t%f\n", fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0], NORM_ACT_DRONET), fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1], NORM_ACT_DRONET));
 	#else
 		printf("Result[steer][coll]:\t%d\t%d\n", SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0], SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1]);
 	#endif
@@ -2385,7 +2529,7 @@ int main() {
 #ifndef DATASET_TEST
 	}
 #endif
-
+#endif //TEST_ALL_NNS
 /* -------------------------------------------------------------------------- */
 
 

@@ -20,7 +20,8 @@
 #include "PULPDronetKernels.h"
 
 #define FLASH_BUFF_SIZE 128
-//#define VERBOSE 1
+#define VERBOSE 1
+#define TEST_IMAGE
 static const char * L3_weights_files[] = {
   "ConvBNRelu0_weights.hex", "ConvBNRelu2_weights.hex", "ConvBNRelu3_weights.hex", "ConvBNRelu4_weights.hex", "ConvBNRelu5_weights.hex", "ConvBNRelu6_weights.hex", "ConvBNRelu7_weights.hex", "Gemm9_weights.hex"
 };
@@ -260,7 +261,11 @@ void network_run(
 #endif  
   rt_team_barrier();
   layerConvBNRelu0(
+#ifdef TEST_IMAGE
+      L2_input,
+#else
       L2_image,
+#endif
       L2_output,
       exec_weights,
       l1_buffer
