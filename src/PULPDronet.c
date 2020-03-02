@@ -186,7 +186,9 @@ static void check_layer(int netId, short int *output, int layer) {
 static void end_of_frame() {
 
 	rt_cam_control(camera, CMD_PAUSE, NULL);
+#ifdef VERBOSE
 	printf("Got image\n");
+#endif
 
 #if CROPPING == 1
 #ifdef SHOW_IMAGES
@@ -198,19 +200,25 @@ static void end_of_frame() {
 	int cam_crop_h, cam_crop_w, ds_ratio, init_offset;
 
 	if(dronet){
+#ifdef VERBOSE
 		printf("Image cropping for DroNet\n");
+#endif
 		init_offset = CAM_FULLRES_W * LL_Y_DRONET + LL_X_DRONET; 
 		cam_crop_h = CAM_CROP_H_DRONET;
 		cam_crop_w = CAM_CROP_W_DRONET;
 		ds_ratio = DS_RATIO_DRONET;
 	}else if(frontnet){
+#ifdef VERBOSE
 		printf("Image cropping for Frontnet\n");
+#endif
 		init_offset = CAM_FULLRES_W * LL_Y_FRONTNET + LL_X_FRONTNET; 
 		cam_crop_h = CAM_CROP_H_FRONTNET;
 		cam_crop_w = CAM_CROP_W_FRONTNET;
 		ds_ratio = DS_RATIO_FRONTNET;
 	}else{
+#ifdef VERBOSE
 		printf("Image cropping for Findnet\n");
+#endif
 		init_offset = CAM_FULLRES_W * LL_Y_FINDNET + LL_X_FINDNET; 
 		cam_crop_h = CAM_CROP_H_FINDNET;
 		cam_crop_w = CAM_CROP_W_FINDNET;
@@ -307,6 +315,9 @@ static void RunPULPFrontnet() {
 	rt_perf_reset(&perf_cl);
 	rt_perf_start(&perf_cl);
 #endif
+
+	// set SPI header - take care, SPIM_tx is 16bit, not 8!
+	SPIM_tx[0] = PULP_NAV_MSG_TYPE + (PULP_NAV_MSG_FRONTNET << 8);
 
 /* --------------------------------- LAYER 1 -------------------------------- */
 	L2_input = L2_image;
@@ -405,7 +416,7 @@ __rt_cluster_push_fc_event(event_capture);
 
 	L2_output[2] = (short int *) meta_alloc(memId_O, outputSizesB[FRONTNET_ID][2]);
 	L2_weights = (short int *) meta_alloc(memId_W, L3_sizes[FRONTNET_ID][1]);
-	printf("size: %d place: %d\n", outputSizesB[FRONTNET_ID][2], L2_output[2]);
+
 	L3toL2(L3_weights[FRONTNET_ID][1], L2_weights, L3_sizes[FRONTNET_ID][1]);
 
 #ifdef PROFILE_CL
@@ -2194,7 +2205,9 @@ int main() {
 			// fix: in rtos/pulp/pulp-os/drivers/hyper/hyperram-v1.c patch this line: if (__pi_hyper_init(hyper, 1000000))
 
 		 	L3_weights[netId][i] = (short int *) rt_hyperram_alloc(hyperram, L3_sizes[netId][i]);
+	#ifdef VERBOSE
 			printf("L3_sizes %s Net: %d Layer %d : %d place: %d\n", L3_weights_files[netId][i], netId, i+1, L3_sizes[netId][i], L3_weights[netId][i]);
+	#endif
 			if(L3_weights[netId][i] == NULL) {
 	#ifdef VERBOSE
 				printf("Error Allocating L3: Net: %d Layer %d\n", netId, i+1); 
@@ -2413,7 +2426,7 @@ int main() {
 /* -------------------------------------------------------------------------- */
 // set up for H/nH NN
 	network_setup();
-/* ----------------------------- RUN PULP-DRONET ---------------------------- */
+/* ----------------------------- RUN NNs ---------------------------- */
 
 	volatile int iter = 0;
 
@@ -2517,12 +2530,28 @@ int main() {
 		printf("FC Cycles:\t\t%d\n", rt_perf_get(&perf_fc, RT_PERF_CYCLES));
 #endif
 
-#ifdef VERBOSE
+#ifdef VERBOSE_RESULT
+		if(head){
+	#ifdef DEBUG
+			printf("Result[x][y][z][phi]:\t%f\t%f\t%f\t%f\n", 
+									fixed2float(SPIM_tx[0], NORM_ACT_FRONTNET),
+									fixed2float(SPIM_tx[1], NORM_ACT_FRONTNET),
+									fixed2float(SPIM_tx[2], NORM_ACT_FRONTNET),
+									fixed2float(SPIM_tx[3], NORM_ACT_FRONTNET));
+	#else //DEBUG
+			printf("Result[x][y][z][phi]:\t%d\t%d\t%d\t%d\n", 
+									SPIM_tx[0],
+									SPIM_tx[1],
+									SPIM_tx[2],
+									SPIM_tx[3]);
+	#endif //DEBUG
+		}else{
 	#ifdef DEBUG
 		printf("Result[steer][coll]:\t%f\t%f\n", fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0], NORM_ACT_DRONET), fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1], NORM_ACT_DRONET));
 	#else
 		printf("Result[steer][coll]:\t%d\t%d\n", SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0], SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1]);
 	#endif
+	}
 #endif
 
 		iter++;

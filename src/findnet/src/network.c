@@ -20,8 +20,10 @@
 #include "PULPDronetKernels.h"
 
 #define FLASH_BUFF_SIZE 128
-#define VERBOSE 1
-#define TEST_IMAGE
+//#define VERBOSE 1
+//#define VERBOSE_PERFORMANCE
+#define VERBOSE_RESULT
+//#define TEST_IMAGE
 static const char * L3_weights_files[] = {
   "ConvBNRelu0_weights.hex", "ConvBNRelu2_weights.hex", "ConvBNRelu3_weights.hex", "ConvBNRelu4_weights.hex", "ConvBNRelu5_weights.hex", "ConvBNRelu6_weights.hex", "ConvBNRelu7_weights.hex", "Gemm9_weights.hex"
 };
@@ -68,7 +70,6 @@ static void check_layer_weight(char *weight, int check_sum_true, int dim) {
 /* Moves the weights and the biases from hyperflash to hyperram */
 int network_setup()
 {
-  printf("start HnH setup\n");
   /* PADFRAME CONFIGURATION */
   rt_padframe_profile_t *profile_hyper = rt_pad_profile_get("hyper");
   rt_padframe_set(profile_hyper);
@@ -124,7 +125,6 @@ int network_setup()
       rdDone += size / sizeof(char);
     }
     rt_free(RT_ALLOC_PERIPH,flashBuffer, flashBuffSize);
-    printf("finished setup HnH\n");
   return 1;
 }
 
@@ -136,14 +136,11 @@ void cluster_main(void *arg) {
     (unsigned int) real_arg[1],
     (short int *)  real_arg[2]
     );
-  printf("Finished cluster_main\n");
 }
 
 void pulp_parallel(void *arg)
 {
-  printf("before HnH fork\n");
   rt_team_fork(NUM_CORES, (void *)cluster_main, arg);
-  printf("after HnH fork\n");
 }
 
   int memId;
@@ -993,7 +990,9 @@ void network_run(
 
   if(rt_core_id()==0)
   {
+#ifdef VERBOSE_RESULT
     printf("class: %d\n", *(L2_output));
+#endif
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 9);  
     check = 193;
@@ -1018,13 +1017,14 @@ int cid = rt_core_id();
 int perf_cyc =  rt_perf_get(&perf2, RT_PERF_CYCLES) ; 
 int MACs = 186400768;
 float perf_MAC =  (float)MACs/perf_cyc;
+#ifdef VERBOSE_PERFORMANCE
 if (cid == 0){
 printf("[%d] : num_cycles: %d\n",cid,perf_cyc); 
 printf("[%d] : MACs: %d\n",cid,MACs ); 
 printf("[%d] : MAC/cycle: %f\n",cid,perf_MAC ); 
 printf("[%d] : n. of Cores: %d\n",cid,NUM_CORES); 
 }
-
+#endif //VERBOSE_PERFORMANCE
 }
 
 
