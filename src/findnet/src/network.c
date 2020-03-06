@@ -22,7 +22,7 @@
 #define FLASH_BUFF_SIZE 128
 //#define VERBOSE 1
 //#define VERBOSE_PERFORMANCE
-#define VERBOSE_RESULT
+//#define VERBOSE_RESULT
 //#define TEST_IMAGE
 static const char * L3_weights_files[] = {
   "ConvBNRelu0_weights.hex", "ConvBNRelu2_weights.hex", "ConvBNRelu3_weights.hex", "ConvBNRelu4_weights.hex", "ConvBNRelu5_weights.hex", "ConvBNRelu6_weights.hex", "ConvBNRelu7_weights.hex", "Gemm9_weights.hex"

@@ -23,7 +23,7 @@
 # Uncomment 'DEBUG' to enable debugging support (e.g., float prints)
 # DEBUG				= true
 # Uncomment 'SHOW_IMAGES' to enable file transfer over openOCD to show the input images for the NN
-SHOW_IMAGES			= true 
+# SHOW_IMAGES			= true 
 pulpChip			= GAP
 PULP_APP			= PULPDroNet
 WEIGHTS_DIR			= $(CURDIR)/../weights

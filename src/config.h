@@ -29,13 +29,13 @@
 //#define TEST_ALL_NNS
 // #define DATASET_TEST				// Enable if you test the Dataset (single iteration)
 // #define VERBOSE	
-#define VERBOSE_RESULT				// Enables additional information
+// #define VERBOSE_RESULT				// Enables additional information
 // #define VERBOSE_META_ALLOC		
 // #define PRINT_IMAGES
 // #define CHECKSUM					// Enables correctness check per layer
 // #define PROFILE_CL				// Profiling execution from the Cluster
 // #define PROFILE_FC				// Profiling execution from the Fabric Ctrl
-#define PLATFORM		2			// Select 1 for PULP-Shield/GV-SoC or 2 for GAPuino
+#define PLATFORM		1			// Select 1 for PULP-Shield/GV-SoC or 2 for GAPuino
 #define CROPPING 		1			// Image cropping enable: 0 in HW, 1 in SW, HW not supported at the moment!
 #define SPI_COMM					// Enables SPI communication
 #define CAM_FULLRES_W	324			// HiMax full width 324
