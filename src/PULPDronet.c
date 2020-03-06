@@ -1034,7 +1034,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][10]);
-	SPIM_tx[0] = L2_output[16][0];
+	SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0] = L2_output[16][0];
 	meta_free(memId_O, outputSizesB[FRONTNET_ID][16]+2);
 
 
@@ -1084,7 +1084,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][11]);
-	SPIM_tx[1] = L2_output[17][0];
+	SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1] = L2_output[17][0];
 	meta_free(memId_O, outputSizesB[FRONTNET_ID][17]+2);
 
 
@@ -1134,7 +1134,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][12]);
-	SPIM_tx[2] = L2_output[18][0];
+	SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 2] = L2_output[18][0];
 	meta_free(memId_O, outputSizesB[FRONTNET_ID][18]+2);
 
 /* --------------------------------- DENSE 4 -------------------------------- */
@@ -1184,7 +1184,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][13]);
-	SPIM_tx[3] = L2_output[19][0];
+	SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 3] = L2_output[19][0];
 	meta_free(memId_O, outputSizesB[FRONTNET_ID][19]+2);
 	meta_free(0, outputSizesB[FRONTNET_ID][14]);
 	meta_free(0, outputSizesB[FRONTNET_ID][9]);
@@ -2498,7 +2498,7 @@ int main() {
 		rt_spim_send(spim, SPIM_tx, SPIM_BUFFER*8, RT_SPIM_CS_AUTO, NULL);
 #endif
 
-	 //  	printf("SPIM_tx: %d %d \n", SPIM_tx[0], SPIM_tx[1]);
+	   	//printf("SPIM_tx: %d %d \n", SPIM_tx[0], SPIM_tx[1]);
 	    
 	 //  	printf("pushed event\n");
 	  	//event_cluster = rt_event_get_blocking(NULL);
@@ -2522,6 +2522,8 @@ int main() {
 #ifdef SPI_COMM
 		// SPI write out result
 		rt_spim_send(spim, SPIM_tx, SPIM_BUFFER*8, RT_SPIM_CS_AUTO, NULL);
+	   	//printf("SPIM_tx: %d %d \n", SPIM_tx[0], SPIM_tx[1]);
+
 #endif
 
 #ifdef PROFILE_FC
@@ -2534,16 +2536,16 @@ int main() {
 		if(head){
 	#ifdef DEBUG
 			printf("Result[x][y][z][phi]:\t%f\t%f\t%f\t%f\n", 
-									fixed2float(SPIM_tx[0], NORM_ACT_FRONTNET),
-									fixed2float(SPIM_tx[1], NORM_ACT_FRONTNET),
-									fixed2float(SPIM_tx[2], NORM_ACT_FRONTNET),
-									fixed2float(SPIM_tx[3], NORM_ACT_FRONTNET));
+									fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0], NORM_ACT_FRONTNET),
+									fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1], NORM_ACT_FRONTNET),
+									fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 2], NORM_ACT_FRONTNET),
+									fixed2float(SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 3], NORM_ACT_FRONTNET));
 	#else //DEBUG
 			printf("Result[x][y][z][phi]:\t%d\t%d\t%d\t%d\n", 
-									SPIM_tx[0],
-									SPIM_tx[1],
-									SPIM_tx[2],
-									SPIM_tx[3]);
+									SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 0],
+									SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 1],
+									SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 2],
+									SPIM_tx[PULP_MSG_HEADER_LENGTH/2 + 3]);
 	#endif //DEBUG
 		}else{
 	#ifdef DEBUG
