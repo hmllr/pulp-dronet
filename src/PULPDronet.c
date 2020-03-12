@@ -2021,7 +2021,7 @@ void generalSetup(){
 
 /* ----------------------------- PADFRAME SETUP ----------------------------- */
 
-	rt_padframe_profile_t *profile_hyper = rt_pad_profile_get("hyper");
+	rt_padframe_profile_t *profile_hyper = rt_pad_profile_get("hyper_gpio");
 #ifdef VERBOSE
 	printf("Pads configuration:\t\t\t%s\n", profile_hyper?"Ok":"Failed");
 #endif

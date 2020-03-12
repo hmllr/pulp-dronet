@@ -70,9 +70,6 @@ static void check_layer_weight(char *weight, int check_sum_true, int dim) {
 /* Moves the weights and the biases from hyperflash to hyperram */
 int network_setup()
 {
-  /* PADFRAME CONFIGURATION */
-  rt_padframe_profile_t *profile_hyper = rt_pad_profile_get("hyper");
-  rt_padframe_set(profile_hyper);
 
   /* FILE-SYSTEM CONFIGURATION*/
   rt_fs_conf_t conf;
