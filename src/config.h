@@ -43,9 +43,9 @@
 #define CAM_CROP_W_FINDNET		324//108//200			// Cropped camera width 
 #define CAM_CROP_H_FINDNET		180//244//60//200			// Cropped camera height 
 #define DS_RATIO_FINDNET		3			// downsampling ratio after cropping
-#define CAM_CROP_W_FRONTNET		108//324//108//200			// Cropped camera width 
-#define CAM_CROP_H_FRONTNET		60//180//244//60//200			// Cropped camera height 
-#define DS_RATIO_FRONTNET		1//3			// downsampling ratio after cropping
+#define CAM_CROP_W_FRONTNET		324//108//200			// Cropped camera width 
+#define CAM_CROP_H_FRONTNET		180//244//60//200			// Cropped camera height 
+#define DS_RATIO_FRONTNET		3			// downsampling ratio after cropping
 #define CAM_CROP_W_DRONET		200			// Cropped camera width 
 #define CAM_CROP_H_DRONET		200			// Cropped camera height 
 #define DS_RATIO_DRONET			1			// downsampling ratio after cropping

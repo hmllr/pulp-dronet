@@ -246,20 +246,20 @@ static void end_of_frame() {
 	if(dronet){
 		unsigned char * ptr = (unsigned char *) L2_image;
 
-		for(int i=CAM_CROP_H_DRONET-1; i>=0; i--) {
+		for(int i=CAM_CROP_H_DRONET/DS_RATIO_DRONET-1; i>=0; i--) {
 			rt_event_execute(NULL, 0);
-			for(int j=CAM_CROP_W_DRONET-1; j>=0; j--) {
-				L2_image[i*CAM_CROP_W_DRONET+j] = (short int) ptr[i*CAM_CROP_W_DRONET+j];
+			for(int j=CAM_CROP_W_DRONET/DS_RATIO_DRONET-1; j>=0; j--) {
+				L2_image[i*CAM_CROP_W_DRONET/DS_RATIO_DRONET+j] = (short int) ptr[i*CAM_CROP_W_DRONET/DS_RATIO_DRONET+j];
 				//printf("%d ", L2_image[i*CAM_CROP_W_DRONET+j]);
 			}
 		}
 	} else if(frontnet){
 		unsigned char * ptr = (unsigned char *) L2_image;
 
-		for(int i=CAM_CROP_H_FRONTNET-1; i>=0; i--) {
+		for(int i=CAM_CROP_H_FRONTNET/DS_RATIO_FRONTNET-1; i>=0; i--) {
 			rt_event_execute(NULL, 0);
-			for(int j=CAM_CROP_W_FRONTNET-1; j>=0; j--) {
-				L2_image[i*CAM_CROP_W_FRONTNET+j] = (short int) ptr[i*CAM_CROP_W_FRONTNET+j];
+			for(int j=CAM_CROP_W_FRONTNET/DS_RATIO_FRONTNET-1; j>=0; j--) {
+				L2_image[i*CAM_CROP_W_FRONTNET/DS_RATIO_FRONTNET+j] = (short int) ptr[i*CAM_CROP_W_FRONTNET/DS_RATIO_FRONTNET+j];
 				//printf("%d ", L2_image[i*CAM_CROP_W_FRONTNET+j]);
 			}
 		}
