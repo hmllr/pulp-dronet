@@ -33,6 +33,9 @@
 #include <fcntl.h>
 #include "ImgIO.h"
 
+#ifdef GAPAZZO
+#define GPIO_PIN 17
+#endif //GAPAZZO
 
 char *					L2_base[NUM_L2_BUFF/2];
 static char *			L2_next_free[NUM_L2_BUFF];
@@ -64,10 +67,22 @@ static short int *		L3_temp_O5;
 static char				dronet = 0;
 static char				frontnet = 0;
 
+#ifdef GAPAZZO
+	static char 		gpio = 0;
+#endif //GAPAZZO
+
 rt_hyperram_t* hyperram; // not static as used by findnet as well
 
 
 unsigned int PMU_set_voltage(unsigned int Voltage, unsigned int CheckFrequencies);
+
+#ifdef GAPAZZO
+static void toggle_gpio()
+{
+	gpio ^= 1; 
+	rt_gpio_set_pin_value(0, GPIO_PIN, gpio);
+}
+#endif //GAPAZZO
 
 static void check_layer_weight(short unsigned int *weight, int check_sum_true, int dim) {
   int checksum = 0;
@@ -315,6 +330,11 @@ static void RunPULPFrontnet() {
 	rt_perf_reset(&perf_cl);
 	rt_perf_start(&perf_cl);
 #endif
+
+#ifdef GAPAZZO
+	toggle_gpio();
+	printf("set gpio 1\n");
+#endif //GAPAZZO
 
 	// set SPI header - take care, SPIM_tx is 16bit, not 8!
 	SPIM_tx[0] = PULP_NAV_MSG_TYPE + (PULP_NAV_MSG_FRONTNET << 8);
@@ -859,7 +879,10 @@ __rt_cluster_push_fc_event(event_capture);
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][7]);
 	meta_free(0, outputSizesB[FRONTNET_ID][11]);
 
-
+#ifdef GAPAZZO
+	toggle_gpio();
+	printf("set gpio 0\n");
+#endif //GAPAZZO
 /* --------------------------------- LAYER 9 -------------------------------- */
 	L2_input = L2_output[12];
 	memId_O = 1;
@@ -1235,14 +1258,18 @@ static void RunPULPDronet() {
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	L2_output[0] = (short int *) meta_alloc(MEM_ID_O1, outputSizesB[DRONET_ID][0]); 
 
 	L2_weights = (short int *) meta_alloc(MEM_ID_W1, L3_sizes[DRONET_ID][0]);
 
 	L3toL2(L3_weights[DRONET_ID][0], L2_weights, L3_sizes[DRONET_ID][0]);
 	//check_layer_weight(L2_weights, L3_weights_GT[DRONET_ID][0], L3_sizes[DRONET_ID][0]);
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #ifdef PROFILE_CL
 	perf_mem_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
@@ -1251,6 +1278,9 @@ static void RunPULPDronet() {
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
+	#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 
 #if defined(DUMP_W) && (DUMP_W==0 || DUMP_W==18)
 	dumpW(0, L2_weights, DUMP_T, DRONET_ID);
@@ -1294,13 +1324,18 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[4] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	MedParConv_1x1_S2_4(L2_input, L2_weights, L2_output[4], Norm_Factor[DRONET_ID][3], L2_bias[DRONET_ID][3], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[4] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==4 || DUMP_W==18)
 	dumpW(4, L2_weights, DUMP_T, DRONET_ID);
 #endif
@@ -1330,9 +1365,11 @@ __rt_cluster_push_fc_event(event_capture);
 #if defined(DUMP_I) && (DUMP_I==1 || DUMP_I==18)
 	dumpFMs(1, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #ifdef PROFILE_CL
-	perf_mem_cum_cl[1] = 0;
+	perf_mem_cum_cl[1] = rt_perf_read(RT_PERF_CYCLES) - perf_start;;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
@@ -1343,6 +1380,9 @@ __rt_cluster_push_fc_event(event_capture);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[1] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 
 #if defined(DUMP_O) && (DUMP_O==1 || DUMP_O==18)
 	dumpFMs(1, L2_output[1], 1, DUMP_T, DRONET_ID);
@@ -1373,13 +1413,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	MedParConv_3x3_S2_ReLU_2(L2_input, L2_weights, L2_output[2], Norm_Factor[DRONET_ID][1], L2_bias[DRONET_ID][1], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==2 || DUMP_W==18)
 	dumpW(2, L2_weights, DUMP_T, DRONET_ID);
 #endif
@@ -1420,13 +1464,18 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	MedParConv_3x3_S1_3(L2_input, L2_weights, L2_output[3], Norm_Factor[DRONET_ID][2], L2_bias[DRONET_ID][2], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
+	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==3 || DUMP_W==18)
 	dumpW(3, L2_weights, DUMP_T, DRONET_ID);
 #endif
@@ -1460,9 +1509,11 @@ __rt_cluster_push_fc_event(event_capture);
 #if defined(DUMP_I) && (DUMP_I==5 || DUMP_I==18)
 	dumpFMs(5, L2_input, 0, DUMP_T, DRONET_ID);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #ifdef PROFILE_CL
-	perf_mem_cum_cl[5] = 0;
+	perf_mem_cum_cl[5] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
@@ -1471,7 +1522,9 @@ __rt_cluster_push_fc_event(event_capture);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[5] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_O) && (DUMP_O==5 || DUMP_O==18)
 	dumpFMs(5, L2_output[5], 1, DUMP_T, DRONET_ID);
 #endif
@@ -1503,6 +1556,10 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_exe_cum_cl[6] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
 
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
+
 #if defined(DUMP_O) && (DUMP_O==6 || DUMP_O==18)
 	dumpFMs(6, L2_output[6], 1, DUMP_T, DRONET_ID);
 #endif
@@ -1531,13 +1588,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[7] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	MedParConv_3x3_S2_ReLU_5(L2_input, L2_weights, L2_output[7], Norm_Factor[DRONET_ID][4], L2_bias[DRONET_ID][4], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[7] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==7 || DUMP_W==18)
 	dumpW(7, L2_weights, DUMP_T, DRONET_ID);
 #endif
@@ -1577,13 +1638,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[8] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	MedParConv_3x3_S1_6(L2_input, L2_weights, L2_output[8], Norm_Factor[DRONET_ID][5], L2_bias[DRONET_ID][5], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[8] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==8 || DUMP_W==18)
 	dumpW(8, L2_weights, DUMP_T, DRONET_ID);
 #endif
@@ -1625,13 +1690,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[9] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	MedParConv_1x1_S2_7(L2_input, L2_weights, L2_output[9], Norm_Factor[DRONET_ID][6], L2_bias[DRONET_ID][6], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[9] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==9 || DUMP_W==18)
 	dumpW(9, L2_weights, DUMP_T, DRONET_ID);
 #endif
@@ -1669,7 +1738,9 @@ __rt_cluster_push_fc_event(event_capture);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[10] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_O) && (DUMP_O==10 || DUMP_O==18)
 	dumpFMs(10, L2_output[10], 1, DUMP_T, DRONET_ID);
 #endif
@@ -1693,7 +1764,9 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[11] = 0;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
+#ifdef GAPAZZO
 
+#endif //GAPAZZO
 	L2_output[11] = (short int *) meta_alloc(MEM_ID_O12, outputSizesB[DRONET_ID][11]);
 
 	ReLU_SW_3(L2_input, L2_output[11], 0);
@@ -1701,6 +1774,10 @@ __rt_cluster_push_fc_event(event_capture);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[11] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
+
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 
 #if defined(DUMP_O) && (DUMP_O==11 || DUMP_O==18)
 	dumpFMs(11, L2_output[11], 1, DUMP_T, DRONET_ID);
@@ -1730,13 +1807,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[12] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	MedParConv_3x3_S2_ReLU_8(L2_input, L2_weights, L2_output[12], Norm_Factor[DRONET_ID][7], L2_bias[DRONET_ID][7], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[12] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==12 || DUMP_W==18)
 	dumpW(12, L2_weights, DUMP_T, DRONET_ID);
 #endif
@@ -1777,13 +1858,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[13] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	MedParConv_3x3_S1_9(L2_input, L2_weights, L2_output[13], Norm_Factor[DRONET_ID][8], L2_bias[DRONET_ID][8], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[13] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==13 || DUMP_W==18)
 	dumpW(13, L2_weights, DUMP_T, DRONET_ID);
 #endif
@@ -1823,13 +1908,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[14] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	MedParConv_1x1_S1_ReLU_10(L2_input, L2_weights, L2_output[14], Norm_Factor[DRONET_ID][9], L2_bias[DRONET_ID][9], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[14] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==14 || DUMP_W==18)
 	dumpW(14, L2_weights, DUMP_T, DRONET_ID);
 #endif
@@ -1867,7 +1956,9 @@ __rt_cluster_push_fc_event(event_capture);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[15] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_O) && (DUMP_O==15 || DUMP_O==18)
 	dumpFMs(15, L2_output[15], 1, DUMP_T, DRONET_ID);
 #endif
@@ -1900,13 +1991,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[16] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	LinearLayer_SW_1(L2_input, L2_weights, Norm_Factor[DRONET_ID][10], L2_bias[DRONET_ID][10], NORM_BIAS_DENSE_DRONET, L2_output[16], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[16] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==16 || DUMP_W==18)
 	dumpW(16, L2_weights, DUMP_T, DRONET_ID);
 #endif
@@ -1947,13 +2042,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[17] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	LinearLayer_SW_2(L2_input, L2_weights, Norm_Factor[DRONET_ID][11], L2_bias[DRONET_ID][11], NORM_BIAS_DENSE_DRONET, L2_output[17], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[17] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==17 || DUMP_W==18)
 	dumpW(17, L2_weights, DUMP_T, DRONET_ID);
 #endif
@@ -2030,6 +2129,12 @@ void generalSetup(){
 
 /* -------------------------------------------------------------------------- */
 
+#ifdef GAPAZZO
+	// initialize and reset the GPIO
+	rt_gpio_init(0, GPIO_PIN);
+	rt_gpio_set_dir(0, 1<<GPIO_PIN, RT_GPIO_IS_OUT);
+	toggle_gpio();
+#endif //GAPAZZO
 
 /* --------------------------- SPIM CONFIGURATION --------------------------- */
 

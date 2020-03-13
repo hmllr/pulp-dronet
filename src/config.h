@@ -25,6 +25,7 @@
 #define PULP_DRONET_CONFIG
 
 /****************************** USER PARAMETERS *******************************/
+//#define GAPAZZO
 //#define TEST_IMAGE
 //#define TEST_ALL_NNS
 // #define DATASET_TEST				// Enable if you test the Dataset (single iteration)
