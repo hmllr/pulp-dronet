@@ -1,5 +1,6 @@
 // flag_DW                        0
 // out_mult                       18
+// out_mult2                      0
 // out_shift                      23
 // FLAG_BATCHNORM                 1
 // FLAG_RELU                      1
@@ -156,8 +157,11 @@ void layerConvBNRelu0(
   unsigned int l2_x,
   unsigned int l2_y,
   unsigned int l2_W,
-  unsigned int l1_buffer
+  unsigned int l1_buffer,
+  unsigned int out_mult_in,
+  unsigned int out_shift_in
 ) {
+
   if(rt_core_id()==0){
     im2col = l1_buffer + 36978;
     // copy first tiles
@@ -203,6 +207,7 @@ void layerConvBNRelu0(
   // bias is not double buffered
     rt_dma_wait(&dma_read_evt_k);
     rt_dma_wait(&dma_read_evt_lambda);
+
     // wait for x,W read
     mchan_barrier(dma_read_evt_x);
     mchan_free(dma_read_evt_x);
@@ -214,8 +219,8 @@ void layerConvBNRelu0(
     int _i_nof_exec=0, _i_nif_exec=0, _i_h_exec=0, _i_w_exec=0;
     int has_bias = 0;
 
-    uint16_t out_mult = 18;
-    uint16_t out_shift = 23;
+    uint16_t out_mult = out_mult_in;
+    uint16_t out_shift = out_shift_in;
 
   // double buffering state
     int db_state_x=0;

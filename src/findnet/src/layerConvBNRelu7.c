@@ -1,5 +1,6 @@
 // flag_DW                        0
 // out_mult                       20
+// out_mult2                      0
 // out_shift                      23
 // FLAG_BATCHNORM                 1
 // FLAG_RELU                      1
@@ -156,7 +157,9 @@ void layerConvBNRelu7(
   unsigned int l2_x,
   unsigned int l2_y,
   unsigned int l2_W,
-  unsigned int l1_buffer
+  unsigned int l1_buffer,
+  unsigned int out_mult_in,
+  unsigned int out_shift_in
 ) {
 
   if(rt_core_id()==0){
@@ -216,8 +219,8 @@ void layerConvBNRelu7(
     int _i_nof_exec=0, _i_nif_exec=0, _i_h_exec=0, _i_w_exec=0;
     int has_bias = 0;
 
-    uint16_t out_mult = 20;
-    uint16_t out_shift = 23;
+    uint16_t out_mult = out_mult_in;
+    uint16_t out_shift = out_shift_in;
 
   // double buffering state
     int db_state_x=0;

@@ -183,12 +183,42 @@ void __attribute__ ((noinline)) dory_dma_memcpy_3d_custom(
    *id = mchan_alloc();
    //funziona per i char solo
    for ( int i=0; i<length_2; i++) {
-	   for ( int j=0; j<length_1; j++) {
-		   mchan_transfer(length_0, dir, 1, 0, 1, 0, 0, (unsigned int)(ext + offs_remote), (unsigned int)(loc + offs_local), 0, 0);
-		   offs_local  += length_0;
-		   offs_remote += stride_0;
-	   }
-	   offs_remote = offs_remote - stride_0*length_1 + stride_1;
+     for ( int j=0; j<length_1; j++) {
+       mchan_transfer(length_0, dir, 1, 0, 1, 0, 0, (unsigned int)(ext + offs_remote), (unsigned int)(loc + offs_local), 0, 0);
+       offs_local  += length_0;
+       offs_remote += stride_0;
+     }
+     offs_remote = offs_remote - stride_0*length_1 + stride_1;
    }
 }
 
+
+
+
+
+void __attribute__ ((noinline)) dory_dma_memcpy_3d_custom_hwc_to_chw(
+  unsigned int ext,
+  unsigned int loc,
+  unsigned short size,
+  unsigned short stride_1,
+  unsigned short stride_0,
+  unsigned short length_2,
+  unsigned short length_0,
+  unsigned int dir,
+  unsigned int *id
+) {
+   unsigned short length_1 = size / (length_2*length_0);
+   int offs_remote = 0;
+   int offs_local = 0;
+
+   //funziona per i char solo
+   *id = mchan_alloc();
+   for ( int i=0; i<length_0; i++) {
+    for ( int j=0; j<length_2; j++) {
+      mchan_transfer(length_1, dir, 1, 1, 1, 0, 0, (unsigned int)(ext + offs_remote), (unsigned int)(loc + offs_local), 1, stride_0);
+      offs_local  += length_1;
+    offs_remote = offs_remote + stride_1;
+    }
+    offs_remote = offs_remote + 1 - stride_1*length_2;
+   }
+}

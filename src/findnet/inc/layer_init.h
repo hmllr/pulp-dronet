@@ -1,6 +1,7 @@
   unsigned int dma_read_evt_W;
   unsigned int dma_read_evt_b;
   unsigned int dma_read_evt_x;
+  unsigned int dma_read_evt_x2;
   unsigned int dma_write_evt_y;
   int p_r, p_l, p_t, p_b;
   int last_nof_exec;
@@ -19,6 +20,7 @@
   unsigned short  W_tile_size_byte;
   unsigned short W_length_nif_byte;
   char *x;
+  char *x2;
   char *W;
   char *y;
   char *b;
@@ -58,4 +60,3 @@
   int acc_out_tile_size_w;
 extern   int acc_in_tile_size_byte;
 extern   int acc_in_tile_size_w;
-

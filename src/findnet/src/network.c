@@ -20,9 +20,16 @@
 #include "PULPDronetKernels.h"
 
 #define FLASH_BUFF_SIZE 128
+#define GAPAZZO
+#ifdef GAPAZZO
+#define GPIO_PIN 17
+#endif //GAPAZZO
+#ifdef GAPAZZO
+  extern volatile char     gpio;
+#endif //GAPAZZO
+
 //#define VERBOSE 1
 //#define VERBOSE_PERFORMANCE
-//#define VERBOSE_RESULT
 //#define TEST_IMAGE
 static const char * L3_weights_files[] = {
   "ConvBNRelu0_weights.hex", "ConvBNRelu2_weights.hex", "ConvBNRelu3_weights.hex", "ConvBNRelu4_weights.hex", "ConvBNRelu5_weights.hex", "ConvBNRelu6_weights.hex", "ConvBNRelu7_weights.hex", "Gemm9_weights.hex"
@@ -36,6 +43,17 @@ static int L3_weights;
 static int activations_input;
 extern rt_hyperram_t* hyperram;
 
+#ifdef GAPAZZO
+static void toggle_gpio()
+{
+  if (rt_core_id()==0)
+  {
+    gpio ^= 1; 
+    rt_gpio_set_pin_value(0, GPIO_PIN, gpio);
+    //printf("hnh gpio %d\n", gpio);
+  }
+}
+#endif //GAPAZZO
 
 
 #ifdef VERBOSE
@@ -156,8 +174,8 @@ char network_run_FabricController(short int *   L2_image, void* stacks)
   arg[0] = (unsigned int) L3_weights_size;
   arg[1] = (unsigned int) hyperram;
   arg[2] = L2_image;
-
-  rt_cluster_call(NULL, 0, pulp_parallel, arg, stacks,1024+1024, 1024+1024, rt_nb_pe(), NULL);
+  // FIXME TODO use STACK_SIZE define!
+  rt_cluster_call(NULL, 0, pulp_parallel, arg, stacks,1200, 1200, rt_nb_pe(), NULL);
 
   return *(L2_output);
 }
@@ -174,11 +192,24 @@ void network_run(
     L2_buffer_allocation = L2_base[0];//rt_alloc(RT_ALLOC_L2_CL_DATA, 400000);
     L2_buffer_allocation_end = L2_buffer_allocation + 400000;
     l1_buffer = PULP_Dronet_L1_Memory; //rt_alloc(RT_ALLOC_CL_DATA,44000 );
+
+    //L2_buffer_allocation = rt_alloc(RT_ALLOC_L2_CL_DATA, 400000);
+    //L2_buffer_allocation_end = L2_buffer_allocation + 400000;
+    //l1_buffer = rt_alloc(RT_ALLOC_CL_DATA,44000 );
 #ifdef VERBOSE
     printf("L2 Buffer alloc initial\t@ 0x%08x:\t%s\n", (unsigned int)L2_buffer_allocation, L2_buffer_allocation?"Ok":"Failed");
 #endif
   }
 
+    uint16_t out_mult = 0;
+    uint16_t out_shift = 0;
+    uint16_t inmul1 = 0;
+    uint16_t inmul2 = 0;
+    int branch_active = 0;
+    int counter = 0;
+    int valid = 0;
+    uint8_t * bypass_activations = 0;
+    int bypass_dimension = 0;
     int d_buffering_weights_t = 0;
     int error_presence = 0;
     int d_buffering_weights_e = 0;
@@ -189,9 +220,12 @@ void network_run(
   int check;
 #endif
     rt_hyperram_req_t wait_L3_w,wait_L3_b;
-    int * L3_weights_size_internal = (int *) L3_weights_size;
     int L3_weights_internal = L3_weights;
     char* exec_weights,*transfer_weights;
+
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
   transfer_weights = d_buffering_weights_t ? L2_weights_2 : L2_weights_1;
   exec_weights = d_buffering_weights_e ? L2_weights_2 : L2_weights_1;
@@ -201,7 +235,7 @@ void network_run(
         dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_input,
-            activations_size[0],
+            6480,
             begin_end_n // begin is 1, end is 0
             );
     rt_hyperram_cluster_read_mine(hyperram, L2_input, activations_input, 6480, &wait_L3_w);
@@ -210,14 +244,14 @@ void network_run(
     dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_weights_1,
-            L3_weights_size_internal[0],
+            992,
             begin_end_n // begin is 1, end is 0
             );
     begin_end_n = !begin_end_n;
     transfer_weights = L2_weights_1;
     exec_weights = L2_weights_1;  
 
-    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal, L3_weights_size_internal[0], &wait_L3_w);
+    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal, 992, &wait_L3_w);
     rt_hyperram_cluster_wait(&wait_L3_w);
 
     /* for all layers in a list, instantiate the layer.
@@ -226,7 +260,7 @@ void network_run(
     dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_output,
-            activations_size[1],
+            51840,
             begin_end_n // begin is 1, end is 0
             );
     begin_end_n = !begin_end_n;
@@ -246,13 +280,15 @@ void network_run(
   if(rt_core_id()==0)
   {
     check = 126682;
-    check_layer_weight(exec_weights, check, L3_weights_size_internal[0]) ;
+    check_layer_weight(exec_weights, check, 992) ;
     check = 464548;
-    check_layer(L2_input, check, activations_size[0]) ;
-  printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
-  printf("L1 buffer %d\n", l1_buffer);
+    check_layer(L2_input, check, 6480);
+  // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
+  // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
+  out_mult = 18;
+  out_shift = 23.0;
   rt_team_barrier();
   layerConvBNRelu0(
 #ifdef TEST_IMAGE
@@ -262,43 +298,57 @@ void network_run(
 #endif
       L2_output,
       exec_weights,
-      l1_buffer
+      l1_buffer,
+  out_mult,
+  out_shift
       );
   rt_team_barrier();
 
-
-//% if i==0:
-//  if(rt_core_id()==0)
-//  	L2_output[3*32*64+6*32+28] +=1;
-//% endif
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
+ //if(rt_core_id()==0)
+  //L2_output[3*32*64+6*32+28] +=1;
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 0);  
     check = 45013;
-    check_layer(L2_output, check, activations_size[1]) ;
+    check_layer(L2_output, check, 51840) ;
 #endif 
   }
   if(rt_core_id()==0)
   {
+  if (branch_active == 1)
+    counter++;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-      L3_weights_size_internal[0],
+      992,
       begin_end_n // begin is 1, end is 0
       );
     //begin_end_n != begin_end_n;
 
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-      activations_size[0],
+      6480,
       begin_end_n // begin is 1, end is 0
       );
+  if (valid == 0 && counter%2==1)
+  {
+    dory_L2_free(&L2_buffer_allocation,
+      &L2_buffer_allocation_end,
+      bypass_dimension,
+      begin_end_n // begin is 1, end is 0
+      );
+  counter = 0;
+  branch_active = 0;
+  }
     L2_input = L2_output;
     dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_output,
-            activations_size[2],
+            14336,
             begin_end_n // begin is 1, end is 0
             );
 
@@ -307,7 +357,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_1,
-              L3_weights_size_internal[1]-L3_weights_size_internal[0],
+              9408,
               begin_end_n // begin is 1, end is 0
               );
     }
@@ -316,7 +366,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_2,
-              L3_weights_size_internal[1]-L3_weights_size_internal[0],
+              9408,
               begin_end_n // begin is 1, end is 0
               );
     }  
@@ -327,54 +377,66 @@ void network_run(
   }
   if(rt_core_id()==0)
   {
-    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + L3_weights_size_internal[0], L3_weights_size_internal[1]-L3_weights_size_internal[0], &wait_L3_w);
+    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + 992, 9408, &wait_L3_w);
+
   }
 
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
     check = 45013;
-    check_layer(L2_input, check, activations_size[1]) ;
-  printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
-  printf("L1 buffer %d\n", l1_buffer);
+    check_layer(L2_input, check, 51840);
+  // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
+  // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
   rt_team_barrier();
   layerMaxPool1(
       L2_input,
       L2_output,
-      l1_buffer
+      l1_buffer,
+  0,0
       );
   rt_team_barrier();
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
-
-//% if i==0:
-//  if(rt_core_id()==0)
-//  	L2_output[3*32*64+6*32+28] +=1;
-//% endif
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 1);  
     check = 22753;
-    check_layer(L2_output, check, activations_size[2]) ;
+    check_layer(L2_output, check, 14336) ;
 #endif 
   }
   if(rt_core_id()==0)
   {
+  if (branch_active == 1)
+    counter++;
     d_buffering_weights_e = !d_buffering_weights_e;
     exec_weights = d_buffering_weights_e ? L2_weights_2 : L2_weights_1;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-      activations_size[1],
+      51840,
       begin_end_n // begin is 1, end is 0
       );
+  if (valid == 0 && counter%2==1)
+  {
+    dory_L2_free(&L2_buffer_allocation,
+      &L2_buffer_allocation_end,
+      bypass_dimension,
+      begin_end_n // begin is 1, end is 0
+      );
+  counter = 0;
+  branch_active = 0;
+  }
     L2_input = L2_output;
     dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_output,
-            activations_size[3],
+            14336,
             begin_end_n // begin is 1, end is 0
             );
 
@@ -383,7 +445,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_1,
-              L3_weights_size_internal[2]-L3_weights_size_internal[1],
+              9408,
               begin_end_n // begin is 1, end is 0
               );
     }
@@ -392,7 +454,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_2,
-              L3_weights_size_internal[2]-L3_weights_size_internal[1],
+              9408,
               begin_end_n // begin is 1, end is 0
               );
     }  
@@ -403,48 +465,54 @@ void network_run(
   }
   if(rt_core_id()==0)
   {
-    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + L3_weights_size_internal[1], L3_weights_size_internal[2]-L3_weights_size_internal[1], &wait_L3_w);
+    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + 10400, 9408, &wait_L3_w);
+
   }
 
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
     check = 1232410;
-    check_layer_weight(exec_weights, check, L3_weights_size_internal[1] - L3_weights_size_internal[0]) ;
+    check_layer_weight(exec_weights, check, 9408) ;
     check = 22753;
-    check_layer(L2_input, check, activations_size[2]) ;
-  printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
-  printf("L1 buffer %d\n", l1_buffer);
+    check_layer(L2_input, check, 14336);
+  // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
+  // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
+  out_mult = 21;
+  out_shift = 22.0;
+
   rt_team_barrier();
   layerConvBNRelu2(
       L2_input,
       L2_output,
       exec_weights,
-      l1_buffer
+      l1_buffer,
+  out_mult,
+  out_shift
       );
   rt_team_barrier();
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
-
-//% if i==0:
-//  if(rt_core_id()==0)
-//  	L2_output[3*32*64+6*32+28] +=1;
-//% endif
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 2);  
     check = 29309;
-    check_layer(L2_output, check, activations_size[3]) ;
+    check_layer(L2_output, check, 14336) ;
 #endif 
   }
   if(rt_core_id()==0)
   {
+  if (branch_active == 1)
+    counter++;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-              L3_weights_size_internal[1]-L3_weights_size_internal[0],
+              9408,
       begin_end_n // begin is 1, end is 0
       );
     //begin_end_n != begin_end_n;
@@ -454,14 +522,24 @@ void network_run(
     exec_weights = d_buffering_weights_e ? L2_weights_2 : L2_weights_1;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-      activations_size[2],
+      14336,
       begin_end_n // begin is 1, end is 0
       );
+  if (valid == 0 && counter%2==1)
+  {
+    dory_L2_free(&L2_buffer_allocation,
+      &L2_buffer_allocation_end,
+      bypass_dimension,
+      begin_end_n // begin is 1, end is 0
+      );
+  counter = 0;
+  branch_active = 0;
+  }
     L2_input = L2_output;
     dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_output,
-            activations_size[4],
+            14336,
             begin_end_n // begin is 1, end is 0
             );
 
@@ -470,7 +548,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_1,
-              L3_weights_size_internal[3]-L3_weights_size_internal[2],
+              18816,
               begin_end_n // begin is 1, end is 0
               );
     }
@@ -479,7 +557,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_2,
-              L3_weights_size_internal[3]-L3_weights_size_internal[2],
+              18816,
               begin_end_n // begin is 1, end is 0
               );
     }  
@@ -490,48 +568,53 @@ void network_run(
   }
   if(rt_core_id()==0)
   {
-    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + L3_weights_size_internal[2], L3_weights_size_internal[3]-L3_weights_size_internal[2], &wait_L3_w);
+    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + 19808, 18816, &wait_L3_w);
+
   }
 
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
     check = 1262679;
-    check_layer_weight(exec_weights, check, L3_weights_size_internal[2] - L3_weights_size_internal[1]) ;
+    check_layer_weight(exec_weights, check, 9408) ;
     check = 29309;
-    check_layer(L2_input, check, activations_size[3]) ;
-  printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
-  printf("L1 buffer %d\n", l1_buffer);
+    check_layer(L2_input, check, 14336);
+  // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
+  // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
+  out_mult = 22;
+  out_shift = 22.0;
   rt_team_barrier();
-  layerConvBNRelu3(
+  layerConvBNRelu2(
       L2_input,
       L2_output,
       exec_weights,
-      l1_buffer
+      l1_buffer,
+  out_mult,
+  out_shift
       );
   rt_team_barrier();
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
-
-//% if i==0:
-//  if(rt_core_id()==0)
-//  	L2_output[3*32*64+6*32+28] +=1;
-//% endif
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 3);  
     check = 22201;
-    check_layer(L2_output, check, activations_size[4]) ;
+    check_layer(L2_output, check, 14336) ;
 #endif 
   }
   if(rt_core_id()==0)
   {
+  if (branch_active == 1)
+    counter++;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-              L3_weights_size_internal[2]-L3_weights_size_internal[1],
+              9408,
       begin_end_n // begin is 1, end is 0
       );
     //begin_end_n != begin_end_n;
@@ -541,14 +624,24 @@ void network_run(
     exec_weights = d_buffering_weights_e ? L2_weights_2 : L2_weights_1;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-      activations_size[3],
+      14336,
       begin_end_n // begin is 1, end is 0
       );
+  if (valid == 0 && counter%2==1)
+  {
+    dory_L2_free(&L2_buffer_allocation,
+      &L2_buffer_allocation_end,
+      bypass_dimension,
+      begin_end_n // begin is 1, end is 0
+      );
+  counter = 0;
+  branch_active = 0;
+  }
     L2_input = L2_output;
     dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_output,
-            activations_size[5],
+            7168,
             begin_end_n // begin is 1, end is 0
             );
 
@@ -557,7 +650,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_1,
-              L3_weights_size_internal[4]-L3_weights_size_internal[3],
+              37248,
               begin_end_n // begin is 1, end is 0
               );
     }
@@ -566,7 +659,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_2,
-              L3_weights_size_internal[4]-L3_weights_size_internal[3],
+              37248,
               begin_end_n // begin is 1, end is 0
               );
     }  
@@ -577,48 +670,54 @@ void network_run(
   }
   if(rt_core_id()==0)
   {
-    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + L3_weights_size_internal[3], L3_weights_size_internal[4]-L3_weights_size_internal[3], &wait_L3_w);
+    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + 38624, 37248, &wait_L3_w);
+
   }
 
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
     check = 2515182;
-    check_layer_weight(exec_weights, check, L3_weights_size_internal[3] - L3_weights_size_internal[2]) ;
+    check_layer_weight(exec_weights, check, 18816) ;
     check = 22201;
-    check_layer(L2_input, check, activations_size[4]) ;
-  printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
-  printf("L1 buffer %d\n", l1_buffer);
+    check_layer(L2_input, check, 14336);
+  // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
+  // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
+  out_mult = 30;
+  out_shift = 23.0;
   rt_team_barrier();
   layerConvBNRelu4(
       L2_input,
       L2_output,
       exec_weights,
-      l1_buffer
+      l1_buffer,
+  out_mult,
+  out_shift
       );
   rt_team_barrier();
+  #ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
 
-//% if i==0:
-//  if(rt_core_id()==0)
-//  	L2_output[3*32*64+6*32+28] +=1;
-//% endif
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 4);  
     check = 16115;
-    check_layer(L2_output, check, activations_size[5]) ;
+    check_layer(L2_output, check, 7168) ;
 #endif 
   }
   if(rt_core_id()==0)
   {
+  if (branch_active == 1)
+    counter++;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-              L3_weights_size_internal[3]-L3_weights_size_internal[2],
+              18816,
       begin_end_n // begin is 1, end is 0
       );
     //begin_end_n != begin_end_n;
@@ -628,14 +727,24 @@ void network_run(
     exec_weights = d_buffering_weights_e ? L2_weights_2 : L2_weights_1;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-      activations_size[4],
+      14336,
       begin_end_n // begin is 1, end is 0
       );
+  if (valid == 0 && counter%2==1)
+  {
+    dory_L2_free(&L2_buffer_allocation,
+      &L2_buffer_allocation_end,
+      bypass_dimension,
+      begin_end_n // begin is 1, end is 0
+      );
+  counter = 0;
+  branch_active = 0;
+  }
     L2_input = L2_output;
     dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_output,
-            activations_size[6],
+            7168,
             begin_end_n // begin is 1, end is 0
             );
 
@@ -644,7 +753,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_1,
-              L3_weights_size_internal[5]-L3_weights_size_internal[4],
+              74496,
               begin_end_n // begin is 1, end is 0
               );
     }
@@ -653,7 +762,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_2,
-              L3_weights_size_internal[5]-L3_weights_size_internal[4],
+              74496,
               begin_end_n // begin is 1, end is 0
               );
     }  
@@ -664,48 +773,53 @@ void network_run(
   }
   if(rt_core_id()==0)
   {
-    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + L3_weights_size_internal[4], L3_weights_size_internal[5]-L3_weights_size_internal[4], &wait_L3_w);
+    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + 75872, 74496, &wait_L3_w);
+
   }
 
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
     check = 5006167;
-    check_layer_weight(exec_weights, check, L3_weights_size_internal[4] - L3_weights_size_internal[3]) ;
+    check_layer_weight(exec_weights, check, 37248) ;
     check = 16115;
-    check_layer(L2_input, check, activations_size[5]) ;
-  printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
-  printf("L1 buffer %d\n", l1_buffer);
+    check_layer(L2_input, check, 7168);
+  // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
+  // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
+  out_mult = 31;
+  out_shift = 23.0;
   rt_team_barrier();
   layerConvBNRelu5(
       L2_input,
       L2_output,
       exec_weights,
-      l1_buffer
+      l1_buffer,
+  out_mult,
+  out_shift
       );
   rt_team_barrier();
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
-
-//% if i==0:
-//  if(rt_core_id()==0)
-//  	L2_output[3*32*64+6*32+28] +=1;
-//% endif
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 5);  
     check = 9996;
-    check_layer(L2_output, check, activations_size[6]) ;
+    check_layer(L2_output, check, 7168) ;
 #endif 
   }
   if(rt_core_id()==0)
   {
+  if (branch_active == 1)
+    counter++;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-              L3_weights_size_internal[4]-L3_weights_size_internal[3],
+              37248,
       begin_end_n // begin is 1, end is 0
       );
     //begin_end_n != begin_end_n;
@@ -715,14 +829,24 @@ void network_run(
     exec_weights = d_buffering_weights_e ? L2_weights_2 : L2_weights_1;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-      activations_size[5],
+      7168,
       begin_end_n // begin is 1, end is 0
       );
+  if (valid == 0 && counter%2==1)
+  {
+    dory_L2_free(&L2_buffer_allocation,
+      &L2_buffer_allocation_end,
+      bypass_dimension,
+      begin_end_n // begin is 1, end is 0
+      );
+  counter = 0;
+  branch_active = 0;
+  }
     L2_input = L2_output;
     dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_output,
-            activations_size[7],
+            3584,
             begin_end_n // begin is 1, end is 0
             );
 
@@ -731,7 +855,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_1,
-              L3_weights_size_internal[6]-L3_weights_size_internal[5],
+              148224,
               begin_end_n // begin is 1, end is 0
               );
     }
@@ -740,7 +864,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_2,
-              L3_weights_size_internal[6]-L3_weights_size_internal[5],
+              148224,
               begin_end_n // begin is 1, end is 0
               );
     }  
@@ -751,48 +875,53 @@ void network_run(
   }
   if(rt_core_id()==0)
   {
-    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + L3_weights_size_internal[5], L3_weights_size_internal[6]-L3_weights_size_internal[5], &wait_L3_w);
+    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + 150368, 148224, &wait_L3_w);
+
   }
 
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
     check = 10366530;
-    check_layer_weight(exec_weights, check, L3_weights_size_internal[5] - L3_weights_size_internal[4]) ;
+    check_layer_weight(exec_weights, check, 74496) ;
     check = 9996;
-    check_layer(L2_input, check, activations_size[6]) ;
-  printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
-  printf("L1 buffer %d\n", l1_buffer);
+    check_layer(L2_input, check, 7168);
+  // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
+  // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
+  out_mult = 17;
+  out_shift = 23.0;
   rt_team_barrier();
   layerConvBNRelu6(
       L2_input,
       L2_output,
       exec_weights,
-      l1_buffer
+      l1_buffer,
+  out_mult,
+  out_shift
       );
   rt_team_barrier();
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
-
-//% if i==0:
-//  if(rt_core_id()==0)
-//  	L2_output[3*32*64+6*32+28] +=1;
-//% endif
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 6);  
     check = 2731;
-    check_layer(L2_output, check, activations_size[7]) ;
+    check_layer(L2_output, check, 3584) ;
 #endif 
   }
   if(rt_core_id()==0)
   {
+  if (branch_active == 1)
+    counter++;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-              L3_weights_size_internal[5]-L3_weights_size_internal[4],
+              74496,
       begin_end_n // begin is 1, end is 0
       );
     //begin_end_n != begin_end_n;
@@ -802,14 +931,24 @@ void network_run(
     exec_weights = d_buffering_weights_e ? L2_weights_2 : L2_weights_1;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-      activations_size[6],
+      7168,
       begin_end_n // begin is 1, end is 0
       );
+  if (valid == 0 && counter%2==1)
+  {
+    dory_L2_free(&L2_buffer_allocation,
+      &L2_buffer_allocation_end,
+      bypass_dimension,
+      begin_end_n // begin is 1, end is 0
+      );
+  counter = 0;
+  branch_active = 0;
+  }
     L2_input = L2_output;
     dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_output,
-            activations_size[8],
+            3584,
             begin_end_n // begin is 1, end is 0
             );
 
@@ -824,55 +963,69 @@ void network_run(
   if(rt_core_id()==0)
   {
     check = 18506398;
-    check_layer_weight(exec_weights, check, L3_weights_size_internal[6] - L3_weights_size_internal[5]) ;
+    check_layer_weight(exec_weights, check, 148224) ;
     check = 2731;
-    check_layer(L2_input, check, activations_size[7]) ;
-  printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
-  printf("L1 buffer %d\n", l1_buffer);
+    check_layer(L2_input, check, 3584);
+  // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
+  // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
+  out_mult = 20;
+  out_shift = 23.0;
   rt_team_barrier();
   layerConvBNRelu7(
       L2_input,
       L2_output,
       exec_weights,
-      l1_buffer
+      l1_buffer,
+  out_mult,
+  out_shift
       );
   rt_team_barrier();
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
-
-//% if i==0:
-//  if(rt_core_id()==0)
-//  	L2_output[3*32*64+6*32+28] +=1;
-//% endif
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 7);  
     check = 4124;
-    check_layer(L2_output, check, activations_size[8]) ;
+    check_layer(L2_output, check, 3584) ;
 #endif 
   }
   if(rt_core_id()==0)
   {
+  if (branch_active == 1)
+    counter++;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-              L3_weights_size_internal[6]-L3_weights_size_internal[5],
+              148224,
       begin_end_n // begin is 1, end is 0
       );
     //begin_end_n != begin_end_n;
 
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-      activations_size[7],
+      3584,
       begin_end_n // begin is 1, end is 0
       );
+  if (valid == 0 && counter%2==1)
+  {
+    dory_L2_free(&L2_buffer_allocation,
+      &L2_buffer_allocation_end,
+      bypass_dimension,
+      begin_end_n // begin is 1, end is 0
+      );
+  counter = 0;
+  branch_active = 0;
+  }
     L2_input = L2_output;
     dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_output,
-            activations_size[9],
+            128,
             begin_end_n // begin is 1, end is 0
             );
 
@@ -881,7 +1034,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_1,
-              L3_weights_size_internal[7]-L3_weights_size_internal[6],
+              132,
               begin_end_n // begin is 1, end is 0
               );
     }
@@ -890,7 +1043,7 @@ void network_run(
       dory_L2_alloc(&L2_buffer_allocation,
               &L2_buffer_allocation_end,
               &L2_weights_2,
-              L3_weights_size_internal[7]-L3_weights_size_internal[6],
+              132,
               begin_end_n // begin is 1, end is 0
               );
     }  
@@ -901,54 +1054,69 @@ void network_run(
   }
   if(rt_core_id()==0)
   {
-    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + L3_weights_size_internal[6], L3_weights_size_internal[7]-L3_weights_size_internal[6], &wait_L3_w);
+    rt_hyperram_cluster_read_mine(hyperram, transfer_weights, L3_weights_internal + 298592, 132, &wait_L3_w);
+
   }
 
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
     check = 4124;
-    check_layer(L2_input, check, activations_size[8]) ;
-  printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
-  printf("L1 buffer %d\n", l1_buffer);
+    check_layer(L2_input, check, 3584);
+  // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
+  // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
+  out_mult = 504.0;
+  out_shift = 9.0;
   rt_team_barrier();
   layerAveragePoolRelu8(
       L2_input,
       L2_output,
-      l1_buffer
+      l1_buffer,
+  out_mult,
+  out_shift
       );
   rt_team_barrier();
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
-
-//% if i==0:
-//  if(rt_core_id()==0)
-//  	L2_output[3*32*64+6*32+28] +=1;
-//% endif
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 8);  
     check = 109;
-    check_layer(L2_output, check, activations_size[9]) ;
+    check_layer(L2_output, check, 128) ;
 #endif 
   }
   if(rt_core_id()==0)
   {
+  if (branch_active == 1)
+    counter++;
     d_buffering_weights_e = !d_buffering_weights_e;
     exec_weights = d_buffering_weights_e ? L2_weights_2 : L2_weights_1;
     dory_L2_free(&L2_buffer_allocation,
       &L2_buffer_allocation_end,
-      activations_size[8],
+      3584,
       begin_end_n // begin is 1, end is 0
       );
+  if (valid == 0 && counter%2==1)
+  {
+    dory_L2_free(&L2_buffer_allocation,
+      &L2_buffer_allocation_end,
+      bypass_dimension,
+      begin_end_n // begin is 1, end is 0
+      );
+  counter = 0;
+  branch_active = 0;
+  }
     L2_input = L2_output;
     dory_L2_alloc(&L2_buffer_allocation,
             &L2_buffer_allocation_end,
             &L2_output,
-            activations_size[10],
+            1,
             begin_end_n // begin is 1, end is 0
             );
 
@@ -963,11 +1131,11 @@ void network_run(
   if(rt_core_id()==0)
   {
     check = 17073;
-    check_layer_weight(exec_weights, check, L3_weights_size_internal[7] - L3_weights_size_internal[6]) ;
+    check_layer_weight(exec_weights, check, 132) ;
     check = 109;
-    check_layer(L2_input, check, activations_size[9]) ;
-  printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
-  printf("L1 buffer %d\n", l1_buffer);
+    check_layer(L2_input, check, 128);
+  // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
+  // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
   rt_team_barrier();
@@ -975,38 +1143,15 @@ void network_run(
       L2_input,
       L2_output,
       exec_weights,
-      l1_buffer
+      l1_buffer,
+  0,0
       );
   rt_team_barrier();
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
 
-//% if i==0:
-//  if(rt_core_id()==0)
-//  	L2_output[3*32*64+6*32+28] +=1;
-//% endif
-
-  if(rt_core_id()==0)
-  {
-#ifdef VERBOSE_RESULT
-    printf("class: %d\n", *(L2_output));
-#endif
-#ifdef VERBOSE
-    printf("Layer %d ended: \n", 9);  
-    check = 193;
-    int max = -100000;
-    int index_max = -1;
-    printf("class: %d\n", *(L2_output));
-    for(int class = 0; class < activations_size[10]; class ++)
-    {
-      if (*(L2_output + class) > max) 
-      {
-        index_max = class;
-        max = *(L2_output + class);
-      }
-    }
-    printf("Output class is: %d, Correct Class is %d\n", index_max, 0);
-#endif 
-  }
 
 rt_perf_stop(&perf2);          
 rt_perf_save(&perf2);          

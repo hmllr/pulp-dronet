@@ -1,6 +1,7 @@
 // flag_DW                        0
-// out_mult                       0
-// out_shift                      0
+// out_mult                       empty
+// out_mult2                      0
+// out_shift                      empty
 // FLAG_BATCHNORM                 0
 // FLAG_RELU                      0
 // weight_T                       0
@@ -128,10 +129,12 @@ l2_W --> weights + k + lambda
 void layerMaxPool1(
   unsigned int l2_x,
   unsigned int l2_y,
-  unsigned int l1_buffer
+  unsigned int l1_buffer,
+  unsigned int out_mult_in,
+  unsigned int out_shift_in
 ) {
   if(rt_core_id()==0){
-    im2col = l1_buffer + 34896;
+    im2col = l1_buffer + 43600;
     // copy first tiles
     //l2_x has now activations, input activations, accumulated activations over channels
     dory_dma_memcpy_3d_custom(

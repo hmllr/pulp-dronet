@@ -1,5 +1,6 @@
 // flag_DW                        0
 // out_mult                       504
+// out_mult2                      0
 // out_shift                      9
 // FLAG_BATCHNORM                 0
 // FLAG_RELU                      1
@@ -82,5 +83,7 @@
 void  layerAveragePoolRelu8(
   unsigned int l2_x,
   unsigned int l2_y,
-  unsigned int l1_buffer
+  unsigned int l1_buffer,
+  unsigned int out_mult_in,
+  unsigned int out_shift_in
 );

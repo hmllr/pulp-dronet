@@ -1,5 +1,6 @@
 // flag_DW                        0
 // out_mult                       504
+// out_mult2                      0
 // out_shift                      9
 // FLAG_BATCHNORM                 0
 // FLAG_RELU                      1
@@ -121,7 +122,9 @@ l2_W --> weights + k + lambda
 void layerAveragePoolRelu8(
   unsigned int l2_x,
   unsigned int l2_y,
-  unsigned int l1_buffer
+  unsigned int l1_buffer,
+  unsigned int out_mult_in,
+  unsigned int out_shift_in
 ) {
   if(rt_core_id()==0){
     im2col = l1_buffer + 3752;
@@ -159,8 +162,8 @@ void layerAveragePoolRelu8(
    int last_w_load = (1 == 1) ? 1 : 0;
 
    int iter;
-    uint16_t out_mult = 504;
-    uint16_t out_shift = 9;
+    uint16_t out_mult = out_mult_in;
+    uint16_t out_shift = out_shift_in;
   // tile loop nest
   for(iter=0; iter<1*1*1; iter++) {
   if(rt_core_id()==0){

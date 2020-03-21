@@ -8,6 +8,14 @@
  * All rights reserved.
  */
 
+uint8_t __attribute__((always_inline)) pulp_nn_add_quant_u8 (
+  uint8_t pix1,            
+  uint8_t pix2,
+  int16_t m1,
+  int16_t m2,
+  int8_t  d
+); 
+
 void pulp_nn_compare_and_replace_if_larger_int8(
 	uint8_t * base,
 	uint8_t * target,

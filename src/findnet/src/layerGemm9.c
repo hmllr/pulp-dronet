@@ -1,6 +1,7 @@
 // flag_DW                        0
-// out_mult                       0
-// out_shift                      0
+// out_mult                       empty
+// out_mult2                      0
+// out_shift                      empty
 // FLAG_BATCHNORM                 0
 // FLAG_RELU                      0
 // weight_T                       0
@@ -139,7 +140,9 @@ void layerGemm9(
   unsigned int l2_x,
   unsigned int l2_y,
   unsigned int l2_W,
-  unsigned int l1_buffer
+  unsigned int l1_buffer,
+  unsigned int out_mult_in,
+  unsigned int out_shift_in
 ) {
 
   if(rt_core_id()==0){
@@ -302,6 +305,7 @@ void layerGemm9(
       p_r = 0;
   }
   rt_team_barrier();
+  asm volatile("": : :"memory");
   pulp_nn_conv_i8_u8(
     x,
     0,

@@ -7,7 +7,17 @@
  * Copyright (C) 2019 ETH Zurich, University of Bologna.
  * All rights reserved.
  */
-
+void __attribute__ ((noinline))  pulp_nn_add_u8_u8 (
+  uint8_t * Im_in_1,             // pointer to the input feature map1
+  uint8_t * Im_in_2,             // pointer to the input feature map2
+  uint16_t  ch_im_in,          // number of channels of the IFM
+  uint16_t  dim_im_in_h,      
+  uint16_t  dim_im_in_w,
+  uint8_t * Im_out,            // pointer to the output
+  uint16_t out_mult1,            // paramter to requantize
+  uint16_t out_mult2,            // paramter to requantize
+  uint16_t out_shift            // paramter to requantize
+);
 
 void pulp_nn_avgpool_u8 (
   uint8_t *  Im_in,
@@ -260,3 +270,37 @@ void pulp_nn_dw_conv_i8_u8 (
   int8_t          flag_acc_buff_out,
   int8_t          flag_first_ch_out
 );
+
+void dw_fast_C_parallel_int8(
+  const uint8_t * Im_in,
+  const uint16_t  dim_im_in_x,
+  const uint16_t  dim_im_in_y,
+  const uint16_t  ch_im_in,
+  const int8_t *  wt,
+  const uint16_t  ch_im_out,
+  const uint16_t  dim_kernel_x,
+  const uint16_t  dim_kernel_y,
+  const uint16_t  padding_y_top,
+  const uint16_t  padding_y_bottom,
+  const uint16_t  padding_x_left,
+  const uint16_t  padding_x_right,
+  const uint16_t  stride_x,
+  const uint16_t  stride_y,
+  const int8_t *  bias,
+  const uint16_t  bias_shift,
+  uint16_t        out_shift,
+  uint16_t        out_mult,
+  int16_t *       k,
+  int32_t *       lambda,
+  uint8_t *       Im_out,
+  const uint16_t  dim_im_out_x,
+  const uint16_t  dim_im_out_y,
+  uint8_t *       bufferC,
+  uint8_t *       bufferB,
+  int32_t *       pOutBufferAcc,
+  int8_t          FLAG_RELU,
+  int8_t          FLAG_BATCH_NORM,
+  int8_t          flag_acc_buff_out,
+  int8_t          flag_first_ch_out
+);
+
