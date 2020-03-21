@@ -68,7 +68,7 @@ static char				dronet = 0;
 static char				frontnet = 0;
 
 #ifdef GAPAZZO
-	static char 		gpio = 0;
+	 volatile char 		gpio = 0;
 #endif //GAPAZZO
 
 rt_hyperram_t* hyperram; // not static as used by findnet as well
@@ -331,11 +331,6 @@ static void RunPULPFrontnet() {
 	rt_perf_start(&perf_cl);
 #endif
 
-#ifdef GAPAZZO
-	toggle_gpio();
-	printf("set gpio 1\n");
-#endif //GAPAZZO
-
 	// set SPI header - take care, SPIM_tx is 16bit, not 8!
 	SPIM_tx[0] = PULP_NAV_MSG_TYPE + (PULP_NAV_MSG_FRONTNET << 8);
 
@@ -344,10 +339,13 @@ static void RunPULPFrontnet() {
 	memId_O = 0;
 	memId_W = 0;
 
+
 #if defined(DUMP_I) && (DUMP_I==0 || DUMP_I==20)
 	dumpFMs(0, L2_input, 0, DUMP_T, FRONTNET_ID);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #ifdef PROFILE_CL
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
@@ -363,12 +361,18 @@ static void RunPULPFrontnet() {
 	perf_mem_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 
 	FN_LargeParConv_5x5_S2_Max2x2_S2_H_1(L2_input, L2_weights, L2_output[0], Norm_Factor[FRONTNET_ID][0], L2_bias[FRONTNET_ID][0], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[0] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 
 #if defined(DUMP_W) && (DUMP_W==0 || DUMP_W==20)
 	dumpW(0, L2_weights, DUMP_T, FRONTNET_ID);
@@ -413,6 +417,9 @@ __rt_cluster_push_fc_event(event_capture);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[1] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
+	#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 
 #if defined(DUMP_O) && (DUMP_O==1 || DUMP_O==20)
 	dumpFMs(1, L2_output[1], 1, DUMP_T, FRONTNET_ID);
@@ -444,12 +451,18 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
 
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
+
 	FN_MedParConv_3x3_S2_ReLU_2(L2_input, L2_weights, L2_output[2], Norm_Factor[FRONTNET_ID][1], L2_bias[FRONTNET_ID][1], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[2] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==2 || DUMP_W==20)
 	dumpW(2, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -492,13 +505,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_MedParConv_3x3_S1_3(L2_input, L2_weights, L2_output[3], Norm_Factor[FRONTNET_ID][2], L2_bias[FRONTNET_ID][2], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[3] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==3 || DUMP_W==20)
 	dumpW(3, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -541,13 +558,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[4] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_MedParConv_1x1_S2_4(L2_input, L2_weights, L2_output[4], Norm_Factor[FRONTNET_ID][3], L2_bias[FRONTNET_ID][3], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[4] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==4 || DUMP_W==20)
 	dumpW(4, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -585,7 +606,9 @@ __rt_cluster_push_fc_event(event_capture);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[5] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_O) && (DUMP_O==5 || DUMP_O==20)
 	dumpFMs(5, L2_output[5], 1, DUMP_T, FRONTNET_ID);
 #endif
@@ -618,7 +641,9 @@ __rt_cluster_push_fc_event(event_capture);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[6] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_O) && (DUMP_O==6 || DUMP_O==20)
 	dumpFMs(6, L2_output[6], 1, DUMP_T, FRONTNET_ID);
 #endif
@@ -648,13 +673,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[7] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_MedParConv_3x3_S2_ReLU_5(L2_input, L2_weights, L2_output[7], Norm_Factor[FRONTNET_ID][4], L2_bias[FRONTNET_ID][4], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[7] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==7 || DUMP_W==20)
 	dumpW(7, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -696,13 +725,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[8] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_MedParConv_3x3_S1_6(L2_input, L2_weights, L2_output[8], Norm_Factor[FRONTNET_ID][5], L2_bias[FRONTNET_ID][5], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[8] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==8 || DUMP_W==20)
 	dumpW(8, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -746,13 +779,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[9] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_MedParConv_1x1_S2_7(L2_input, L2_weights, L2_output[9], Norm_Factor[FRONTNET_ID][6], L2_bias[FRONTNET_ID][6], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[9] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==9 || DUMP_W==20)
 	dumpW(9, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -790,7 +827,9 @@ __rt_cluster_push_fc_event(event_capture);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[10] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_O) && (DUMP_O==10 || DUMP_O==20)
 	dumpFMs(10, L2_output[10], 1, DUMP_T, FRONTNET_ID);
 #endif
@@ -823,7 +862,9 @@ __rt_cluster_push_fc_event(event_capture);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[11] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_O) && (DUMP_O==11 || DUMP_O==20)
 	dumpFMs(11, L2_output[11], 1, DUMP_T, FRONTNET_ID);
 #endif
@@ -853,13 +894,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[12] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_MedParConv_3x3_S2_ReLU_8(L2_input, L2_weights, L2_output[12], Norm_Factor[FRONTNET_ID][7], L2_bias[FRONTNET_ID][7], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[12] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==12 || DUMP_W==20)
 	dumpW(12, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -879,10 +924,6 @@ __rt_cluster_push_fc_event(event_capture);
 	meta_free(memId_W, L3_sizes[FRONTNET_ID][7]);
 	meta_free(0, outputSizesB[FRONTNET_ID][11]);
 
-#ifdef GAPAZZO
-	toggle_gpio();
-	printf("set gpio 0\n");
-#endif //GAPAZZO
 /* --------------------------------- LAYER 9 -------------------------------- */
 	L2_input = L2_output[12];
 	memId_O = 1;
@@ -905,13 +946,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[13] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_MedParConv_3x3_S1_9(L2_input, L2_weights, L2_output[13], Norm_Factor[FRONTNET_ID][8], L2_bias[FRONTNET_ID][8], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[13] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==13 || DUMP_W==20)
 	dumpW(13, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -953,13 +998,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[14] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_MedParConv_1x1_S1_ReLU_10(L2_input, L2_weights, L2_output[14], Norm_Factor[FRONTNET_ID][9], L2_bias[FRONTNET_ID][9], 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[14] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==14 || DUMP_W==20)
 	dumpW(14, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -997,7 +1046,9 @@ __rt_cluster_push_fc_event(event_capture);
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[15] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_O) && (DUMP_O==15 || DUMP_O==20)
 	dumpFMs(15, L2_output[15], 1, DUMP_T, FRONTNET_ID);
 #endif
@@ -1033,13 +1084,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[16] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_LinearLayer_SW_1(L2_input, L2_weights, Norm_Factor[FRONTNET_ID][10], L2_bias[FRONTNET_ID][10], NORM_BIAS_DENSE_FRONTNET, L2_output[16], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[16] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==16 || DUMP_W==20)
 	dumpW(16, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -1083,13 +1138,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[17] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_LinearLayer_SW_2(L2_input, L2_weights, Norm_Factor[FRONTNET_ID][11], L2_bias[FRONTNET_ID][11], NORM_BIAS_DENSE_FRONTNET, L2_output[17], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[17] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==17 || DUMP_W==20)
 	dumpW(17, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -1133,13 +1192,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[18] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_LinearLayer_SW_3(L2_input, L2_weights, Norm_Factor[FRONTNET_ID][12], L2_bias[FRONTNET_ID][12], NORM_BIAS_DENSE_FRONTNET, L2_output[18], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[18] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==18 || DUMP_W==20)
 	dumpW(18, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
@@ -1183,13 +1246,17 @@ __rt_cluster_push_fc_event(event_capture);
 	perf_mem_cum_cl[19] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 	perf_start = rt_perf_read(RT_PERF_CYCLES);
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 	FN_LinearLayer_SW_4(L2_input, L2_weights, Norm_Factor[FRONTNET_ID][13], L2_bias[FRONTNET_ID][13], NORM_BIAS_DENSE_DRONET, L2_output[19], 0, 0);
 
 #ifdef PROFILE_CL
 	perf_exe_cum_cl[19] = rt_perf_read(RT_PERF_CYCLES) - perf_start;
 #endif
-
+#ifdef GAPAZZO
+	toggle_gpio();
+#endif //GAPAZZO
 #if defined(DUMP_W) && (DUMP_W==19 || DUMP_W==20)
 	dumpW(19, L2_weights, DUMP_T, FRONTNET_ID);
 #endif
