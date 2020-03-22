@@ -14,6 +14,7 @@
 
 #define log2(x) __builtin_pulp_fl1(x)
 #define min(a,b) ((a)<(b)?(a):(b))
+#define clip8(x) __builtin_pulp_clipu_r(x, 255)
 
 void __attribute__ ((noinline))  pulp_nn_avgpool_u8 (
   uint8_t *  Im_in,            // pointer to the input feature map
@@ -48,15 +49,18 @@ void __attribute__ ((noinline))  pulp_nn_avgpool_u8 (
         i=0;
         for (int w_in = 0; w_in<dim_im_in_x-dim_kernel_x+1; w_in+=stride)
         {
-          uint16_t sum=0;
+          uint32_t sum=0;
           for (int h_out=0;h_out<dim_kernel_y;h_out++){
             for (int w_out=0;w_out<dim_kernel_x;w_out++){
-              sum += (uint16_t)*(Im_in+scan_channel + ch_im_in*(w_in+w_out)+ch_im_in*dim_im_in_x*(h_in+h_out));
+              sum += (uint32_t)*(Im_in+scan_channel + ch_im_in*(w_in+w_out)+ch_im_in*dim_im_in_x*(h_in+h_out));
             }
           }
-          if (flag_relu)
-            sum = pulp_nn_quant_u8(sum, out_mult, out_shift);
-          sum = sum/(dim_kernel_x*dim_kernel_y);
+          if (flag_relu){
+            sum = (sum * out_mult) >> out_shift;
+            sum = sum/(dim_kernel_x*dim_kernel_y);
+            sum = clip8(sum);}
+          else
+            sum = sum/(dim_kernel_x*dim_kernel_y);
           *(Im_out+scan_channel + ch_im_in*(w_in)+ch_im_in*dim_im_in_x*(h_in))=(uint8_t)sum;
           i++;
         }

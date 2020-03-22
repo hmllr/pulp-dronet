@@ -1,7 +1,7 @@
 // flag_DW                        0
-// out_mult                       22
+// out_mult                       18
 // out_mult2                      0
-// out_shift                      22
+// out_shift                      23
 // FLAG_BATCHNORM                 1
 // FLAG_RELU                      1
 // weight_T                       0

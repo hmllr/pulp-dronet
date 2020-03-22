@@ -6,6 +6,23 @@
 
 #define max4(a,b)  		    __builtin_pulp_maxu4(a,b)
 #define avg4(a,b)         __builtin_pulp_avg4(a,b)
+#define clip8(x) __builtin_pulp_clipu_r(x, 255)
+
+uint8_t __attribute__((always_inline)) pulp_nn_add_quant_u8 (
+  uint8_t pix1,            
+  uint8_t pix2,
+  int16_t m1,
+  int16_t m2,
+  int8_t  d
+) {
+  /* Integer Batch Normalization */
+  uint32_t integer_image = pix1*m1 + pix2*m2;
+  /* Quantization */
+  uint16_t x = (integer_image) >> d;
+  uint8_t res = clip8(x);
+  return res;
+}
+
 
 
 void pulp_nn_compare_and_replace_if_larger_int8(uint8_t * base,

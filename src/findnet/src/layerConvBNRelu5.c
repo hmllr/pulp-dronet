@@ -1,5 +1,5 @@
 // flag_DW                        0
-// out_mult                       31
+// out_mult                       17
 // out_mult2                      0
 // out_shift                      23
 // FLAG_BATCHNORM                 1
