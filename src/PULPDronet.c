@@ -81,6 +81,7 @@ static void toggle_gpio()
 {
 	gpio ^= 1; 
 	rt_gpio_set_pin_value(0, GPIO_PIN, gpio);
+	//printf("fdn gpio %d\n", gpio);
 }
 #endif //GAPAZZO
 
@@ -110,7 +111,6 @@ static void handle_async_error(void *arg, rt_event_t *event, int error, void *ob
 	printf("Received error (error code 0x%x, event %p, object: %p): %s\n", error, event, object, rt_error_str(error));
 	exit(-1);
 }
-
 
 static void enqueue_capture();
 
@@ -239,7 +239,6 @@ static void end_of_frame() {
 		cam_crop_w = CAM_CROP_W_FINDNET;
 		ds_ratio = DS_RATIO_FINDNET;
 	}
-	
 	for(int i=0; i<cam_crop_h; i+=ds_ratio) {	
 		rt_event_execute(NULL, 0);
 		unsigned char * line = ptr_crop + init_offset + CAM_FULLRES_W * i;
@@ -1367,7 +1366,6 @@ static void RunPULPDronet() {
 
 	meta_free(MEM_ID_W1, L3_sizes[DRONET_ID][0]);
 
-
 /* -------------------- TRIGGER A NEW IMG TRANSFER ON FC -------------------- */
 __rt_cluster_push_fc_event(event_capture);
 
@@ -1423,7 +1421,6 @@ __rt_cluster_push_fc_event(event_capture);
 	// move O5 to L3 to save L2
 	L2toL3(L3_temp_O5, L2_output[4], outputSizesB[DRONET_ID][4]);
 	meta_free(MEM_ID_O5, outputSizesB[DRONET_ID][4]);
-
 
 /* --------------------------------- LAYER 2 -------------------------------- */
 
@@ -1509,7 +1506,6 @@ __rt_cluster_push_fc_event(event_capture);
 
 	meta_free(MEM_ID_W2, L3_sizes[DRONET_ID][1]);
 	meta_free(MEM_ID_O2, outputSizesB[DRONET_ID][1]);
-
 
 /* --------------------------------- LAYER 3 -------------------------------- */
 	L2_input = L2_output[2];
@@ -1602,7 +1598,6 @@ __rt_cluster_push_fc_event(event_capture);
 
 	meta_free(MEM_ID_O4, outputSizesB[DRONET_ID][4]);
 	
-
 /* --------------------------------- LAYER 5 -------------------------------- */
 	L2_input = L2_output[5];
 
@@ -1684,7 +1679,6 @@ __rt_cluster_push_fc_event(event_capture);
 
 	meta_free(MEM_ID_W5, L3_sizes[DRONET_ID][4]);
 	
-
 /* --------------------------------- LAYER 6 -------------------------------- */
 	L2_input = L2_output[7];
 
@@ -1736,7 +1730,6 @@ __rt_cluster_push_fc_event(event_capture);
 	meta_free(MEM_ID_O8, outputSizesB[DRONET_ID][7]);
 	meta_free(MEM_ID_O7, outputSizesB[DRONET_ID][6]);
 	
-
 /* --------------------------------- LAYER 7 -------------------------------- */
 	L2_input = L2_output[5];
 
@@ -1786,7 +1779,6 @@ __rt_cluster_push_fc_event(event_capture);
 
 	meta_free(MEM_ID_W7, L3_sizes[DRONET_ID][6]);
 	
-
 /* -------------------------------- ADD RES 2 -------------------------------- */
 	L2_input = L2_output[8];
 	L2_output[10] = L2_output[9];
@@ -1819,7 +1811,6 @@ __rt_cluster_push_fc_event(event_capture);
 	meta_free(MEM_ID_O9, outputSizesB[DRONET_ID][8]);
 	meta_free(MEM_ID_O4, outputSizesB[DRONET_ID][3]);
 	
-
 /* --------------------------------- LAYER 8 -------------------------------- */
 	L2_input = L2_output[10];
 
@@ -1902,8 +1893,7 @@ __rt_cluster_push_fc_event(event_capture);
 #endif
 
 	meta_free(MEM_ID_W8, L3_sizes[DRONET_ID][7]);
-	meta_free(MEM_ID_O12, outputSizesB[DRONET_ID][11]);
-	
+	meta_free(MEM_ID_O12, outputSizesB[DRONET_ID][11]);	
 
 /* --------------------------------- LAYER 9 -------------------------------- */
 	L2_input = L2_output[12];
@@ -1954,7 +1944,6 @@ __rt_cluster_push_fc_event(event_capture);
 
 	meta_free(MEM_ID_W9, L3_sizes[DRONET_ID][8]);
 	
-
 /* --------------------------------- LAYER 10 ------------------------------- */
 	L2_input = L2_output[9];
 
@@ -2004,7 +1993,6 @@ __rt_cluster_push_fc_event(event_capture);
 
 	meta_free(MEM_ID_W10, L3_sizes[DRONET_ID][9]);
 
-
 /* -------------------------------- ADD RES 3 -------------------------------- */
 	L2_input = L2_output[13];
 	L2_output[15] = L2_output[14];
@@ -2036,7 +2024,6 @@ __rt_cluster_push_fc_event(event_capture);
 
 	meta_free(MEM_ID_O14, outputSizesB[DRONET_ID][13]);
 	meta_free(MEM_ID_O13, outputSizesB[DRONET_ID][12]);
-
 
 /* --------------------------------- DENSE 1 -------------------------------- */
 	L2_input = L2_output[15];
@@ -2141,7 +2128,6 @@ __rt_cluster_push_fc_event(event_capture);
 	meta_free(MEM_ID_O18, outputSizesB[DRONET_ID][17]+2);
 	meta_free(MEM_ID_O15, outputSizesB[DRONET_ID][14]);
 	meta_free(MEM_ID_O10, outputSizesB[DRONET_ID][9]);
-
 
 /* -------------------------------------------------------------------------- */
 
@@ -2634,7 +2620,7 @@ int main() {
 	rt_cluster_call(NULL, CID, (void *) RunPULPDronet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
 
 #else //TEST_ALL_NNS
-
+	char once_head = 0;
 #ifndef DATASET_TEST
 	while(1) {
 #endif
@@ -2657,6 +2643,7 @@ int main() {
 	  	char head = network_run_FabricController(L2_image, stacks);
 		
 	  	if(head){
+	  		//once_head = 1; //TODO
 	  		frontnet = 1; //TODO	
 	  	}else{
 	  		dronet = 1;
@@ -2667,7 +2654,7 @@ int main() {
 	   	SPIM_tx[1] = head << 8; //3rd byte of SPIM_tx
 #ifdef SPI_COMM
 		// SPI write out result
-		rt_spim_send(spim, SPIM_tx, SPIM_BUFFER*8, RT_SPIM_CS_AUTO, NULL);
+		//rt_spim_send(spim, SPIM_tx, SPIM_BUFFER*8, RT_SPIM_CS_AUTO, NULL);
 #endif
 
 	   	//printf("SPIM_tx: %d %d \n", SPIM_tx[0], SPIM_tx[1]);
@@ -2685,10 +2672,19 @@ int main() {
 		frontnet = 0;
 		event_capture = rt_event_get(NULL, enqueue_capture, NULL);
 		if(head){
-			rt_cluster_call(NULL, CID, (void *) RunPULPFrontnet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
-		}else{
+		 	rt_cluster_call(NULL, CID, (void *) RunPULPFrontnet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
+// execute the function "RunPULPDronet" on the cluster
+	// while(imgTransferDone==0) {
+	// 	rt_event_yield(NULL);
+	// }
+	// 	dronet = 0;
+	// 	frontnet = 0;
+	// imgTransferDone=0;
+	// event_capture = rt_event_get(NULL, enqueue_capture, NULL);
+		  }else{
 			rt_cluster_call(NULL, CID, (void *) RunPULPDronet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
-		}
+
+		 }
 		//rt_event_wait(event_cluster);
 
 #ifdef SPI_COMM
