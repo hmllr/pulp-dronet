@@ -272,22 +272,19 @@ void network_run(
     rt_perf_reset(&perf2);                      
     rt_perf_stop(&perf2);                       
     rt_perf_start(&perf2); 
-  if(rt_core_id()==0)
-  {
-  }
 
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
-    check = 121382;
+    check = 119812;
     check_layer_weight(exec_weights, check, 992) ;
-    check = 643106;
+    check = 791021;
     check_layer(L2_input, check, 6480);
   // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
   // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
-  out_mult = 26;
+  out_mult = 25;
   out_shift = 24.0;
   rt_team_barrier();
   layerConvBNRelu0(
@@ -303,16 +300,14 @@ void network_run(
   out_shift
       );
   rt_team_barrier();
-
-
- //if(rt_core_id()==0)
- // L2_output[3*32*64+6*32+28] +=1;
-
- // if(rt_core_id()==0)
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
+  if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 0);  
-    check = 73714;
+    check = 70113;
     check_layer(L2_output, check, 51840) ;
 #endif 
   }
@@ -382,7 +377,7 @@ void network_run(
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
-    check = 73714;
+    check = 70113;
     check_layer(L2_input, check, 51840);
   // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
   // printf("L1 buffer %d\n", l1_buffer);
@@ -396,14 +391,16 @@ void network_run(
   0,0
       );
   rt_team_barrier();
-
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 1);  
-    check = 34142;
+    check = 29148;
     check_layer(L2_output, check, 14336) ;
 #endif 
   }
@@ -468,15 +465,15 @@ void network_run(
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
-    check = 1255324;
+    check = 1255020;
     check_layer_weight(exec_weights, check, 9408) ;
-    check = 34142;
+    check = 29148;
     check_layer(L2_input, check, 14336);
   // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
   // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
-  out_mult = 17;
+  out_mult = 16;
   out_shift = 23.0;
   rt_team_barrier();
   layerConvBNRelu2(
@@ -488,14 +485,16 @@ void network_run(
   out_shift
       );
   rt_team_barrier();
-
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 2);  
-    check = 37636;
+    check = 42482;
     check_layer(L2_output, check, 14336) ;
 #endif 
   }
@@ -568,15 +567,15 @@ void network_run(
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
-    check = 1217696;
+    check = 1235619;
     check_layer_weight(exec_weights, check, 9408) ;
-    check = 37636;
+    check = 42482;
     check_layer(L2_input, check, 14336);
   // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
   // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
-  out_mult = 18;
+  out_mult = 23;
   out_shift = 23.0;
   rt_team_barrier();
   layerConvBNRelu2(
@@ -588,14 +587,16 @@ void network_run(
   out_shift
       );
   rt_team_barrier();
-
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 3);  
-    check = 35013;
+    check = 30127;
     check_layer(L2_output, check, 14336) ;
 #endif 
   }
@@ -668,9 +669,9 @@ void network_run(
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
-    check = 2522020;
+    check = 2533008;
     check_layer_weight(exec_weights, check, 18816) ;
-    check = 35013;
+    check = 30127;
     check_layer(L2_input, check, 14336);
   // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
   // printf("L1 buffer %d\n", l1_buffer);
@@ -688,14 +689,16 @@ void network_run(
   out_shift
       );
   rt_team_barrier();
-
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 4);  
-    check = 20333;
+    check = 13573;
     check_layer(L2_output, check, 7168) ;
 #endif 
   }
@@ -768,16 +771,16 @@ void network_run(
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
-    check = 4980383;
+    check = 5026181;
     check_layer_weight(exec_weights, check, 37248) ;
-    check = 20333;
+    check = 13573;
     check_layer(L2_input, check, 7168);
   // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
   // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
-  out_mult = 17;
-  out_shift = 23.0;
+  out_mult = 31;
+  out_shift = 24.0;
   rt_team_barrier();
   layerConvBNRelu5(
       L2_input,
@@ -789,13 +792,15 @@ void network_run(
       );
   rt_team_barrier();
 
-
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 5);  
-    check = 25917;
+    check = 23202;
     check_layer(L2_output, check, 7168) ;
 #endif 
   }
@@ -868,15 +873,15 @@ void network_run(
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
-    check = 9937892;
+    check = 9852745;
     check_layer_weight(exec_weights, check, 74496) ;
-    check = 25917;
+    check = 23202;
     check_layer(L2_input, check, 7168);
   // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
   // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
-  out_mult = 24;
+  out_mult = 22;
   out_shift = 24.0;
   rt_team_barrier();
   layerConvBNRelu6(
@@ -889,13 +894,15 @@ void network_run(
       );
   rt_team_barrier();
 
-
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 6);  
-    check = 15408;
+    check = 7524;
     check_layer(L2_output, check, 3584) ;
 #endif 
   }
@@ -946,15 +953,15 @@ void network_run(
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
-    check = 17408796;
+    check = 18102222;
     check_layer_weight(exec_weights, check, 148224) ;
-    check = 15408;
+    check = 7524;
     check_layer(L2_input, check, 3584);
   // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
   // printf("L1 buffer %d\n", l1_buffer);
   }
 #endif  
-  out_mult = 24;
+  out_mult = 22;
   out_shift = 24.0;
   rt_team_barrier();
   layerConvBNRelu7(
@@ -967,13 +974,15 @@ void network_run(
       );
   rt_team_barrier();
 
-
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 7);  
-    check = 28858;
+    check = 25692;
     check_layer(L2_output, check, 3584) ;
 #endif 
   }
@@ -1043,7 +1052,7 @@ void network_run(
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
-    check = 28858;
+    check = 25692;
     check_layer(L2_input, check, 3584);
   // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
   // printf("L1 buffer %d\n", l1_buffer);
@@ -1061,13 +1070,15 @@ void network_run(
       );
   rt_team_barrier();
 
-
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
   if(rt_core_id()==0)
   {
 #ifdef VERBOSE
     printf("Layer %d ended: \n", 8);  
-    check = 949;
+    check = 878;
     check_layer(L2_output, check, 128) ;
 #endif 
   }
@@ -1110,9 +1121,9 @@ void network_run(
 #ifdef VERBOSE
   if(rt_core_id()==0)
   {
-    check = 16355;
+    check = 15619;
     check_layer_weight(exec_weights, check, 132) ;
-    check = 949;
+    check = 878;
     check_layer(L2_input, check, 128);
   // printf("L2 input %d, L2 output %d, weights %d\n", L2_input, L2_output, exec_weights);
   // printf("L1 buffer %d\n", l1_buffer);
@@ -1128,6 +1139,9 @@ void network_run(
       );
   rt_team_barrier();
 
+#ifdef GAPAZZO
+  toggle_gpio();
+#endif //GAPAZZO
 
 rt_perf_stop(&perf2);          
 rt_perf_save(&perf2);          

@@ -35,8 +35,8 @@
 // #define PRINT_IMAGES
 // #define CHECKSUM					// Enables correctness check per layer
 // #define PROFILE_CL				// Profiling execution from the Cluster
-// #define PROFILE_FC				// Profiling execution from the Fabric Ctrl
-#define PLATFORM		1			// Select 1 for PULP-Shield/GV-SoC or 2 for GAPuino
+ //#define PROFILE_FC				// Profiling execution from the Fabric Ctrl
+#define PLATFORM		2			// Select 1 for PULP-Shield/GV-SoC or 2 for GAPuino
 #define CROPPING 		1			// Image cropping enable: 0 in HW, 1 in SW, HW not supported at the moment!
 #define SPI_COMM					// Enables SPI communication
 #define CAM_FULLRES_W	324			// HiMax full width 324
@@ -68,15 +68,15 @@
  *	Highest performance:	VDD@1.2V	FC 250MHz	CL 250MHz	(18fps@272mW) *
  * -------------------------------------------------------------------------- */
 
-#define VOLTAGE_SOC		1000		// SoC voltage level (1000, 1050, 1100, 1150, 1200 mV)
-#define FREQUENCY_FC	50000000	// Fabric Ctrl target frequency [Hz]
-#define FREQUENCY_CL	100000000	// Cluster target frequency [Hz]
+#define VOLTAGE_SOC		1050		// SoC voltage level (1000, 1050, 1100, 1150, 1200 mV)
+#define FREQUENCY_FC	100000000//50000000	// Fabric Ctrl target frequency [Hz]
+#define FREQUENCY_CL	165000000//100000000	// Cluster target frequency [Hz]
 /******************************************************************************/
 
 // LAYER			ID		InCh	InW		InH		OutCh	OutW	OutH	KerW	KerH	Stride	Bias[B] Weights[B]
 // 5x5ConvMax_1		0		1		200		200		32		50		50		5		5		2,2		64		1600
-// ReLU_1			1		32		50		50		32		50		50		--		--		--		--		--
-// 3x3ConvReLU_2	2		32		50		50		32		25		25		3		3		2		64		18432
+// ReLU_1			1		32		50		50		32		75		50		--		--		--		--		--
+// 3x3ConvReLU_2	2		32		50		50		32		2550		3		3		2		64		18432
 // 3x3Conv_3		3		32		25		25		32		25		25		3		3		1		64		18432
 // 1x1Conv_4		4		32		50		50		32		25		25		1		1		2		64		2048
 // Add_1			5		32		25		25		32		25		25		--		--		--		--		--

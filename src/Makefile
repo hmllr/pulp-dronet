@@ -23,7 +23,7 @@
 # Uncomment 'DEBUG' to enable debugging support (e.g., float prints)
 # DEBUG				= true
 # Uncomment 'SHOW_IMAGES' to enable file transfer over openOCD to show the input images for the NN
-# SHOW_IMAGES			= true 
+ #SHOW_IMAGES			= true 
 pulpChip			= GAP
 PULP_APP			= PULPDroNet
 WEIGHTS_DIR			= $(CURDIR)/../weights
@@ -63,7 +63,7 @@ PULP_ARCH_LDFLAGS	= -mPE=8 -mFC=1
 ifdef DEBUG
 	PULP_CFLAGS		+= -Os -DDEBUG
 else
-	PULP_CFLAGS		+= -Os 
+	PULP_CFLAGS		+= -O3
 endif
 PULP_CFLAGS			+= -DNUM_CORES=$(CORE) -w -mno-memcpy -fno-tree-loop-distribute-patterns -fdata-sections -ffunction-sections -Wall -Wno-maybe-uninitialized -Wno-unused-but-set-variable
 PULP_CFLAGS 		+= -I$(TILER_DIR)/include -I$(CURDIR) -I$(FINDNET_INC_DIR)

@@ -2620,7 +2620,7 @@ int main() {
 	rt_cluster_call(NULL, CID, (void *) RunPULPDronet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
 
 #else //TEST_ALL_NNS
-	char once_head = 0;
+	char head = 0;
 #ifndef DATASET_TEST
 	while(1) {
 #endif
@@ -2640,7 +2640,7 @@ int main() {
 		// execute the H/nH NN on the cluster
 		
 		// printf("L2_image %d\n", L2_image);
-	  	char head = network_run_FabricController(L2_image, stacks);
+	  	char realhead = network_run_FabricController(L2_image, stacks);
 		
 	  	if(head){
 	  		//once_head = 1; //TODO
@@ -2673,6 +2673,7 @@ int main() {
 		event_capture = rt_event_get(NULL, enqueue_capture, NULL);
 		if(head){
 		 	rt_cluster_call(NULL, CID, (void *) RunPULPFrontnet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
+		 	head=0;
 // execute the function "RunPULPDronet" on the cluster
 	// while(imgTransferDone==0) {
 	// 	rt_event_yield(NULL);
@@ -2683,7 +2684,7 @@ int main() {
 	// event_capture = rt_event_get(NULL, enqueue_capture, NULL);
 		  }else{
 			rt_cluster_call(NULL, CID, (void *) RunPULPDronet, NULL, stacks, STACK_SIZE, STACK_SIZE, rt_nb_pe(), NULL);//event_cluster);
-
+			head=1;
 		 }
 		//rt_event_wait(event_cluster);
 
